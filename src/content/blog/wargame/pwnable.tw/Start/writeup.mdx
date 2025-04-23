@@ -109,7 +109,7 @@ Let's break it out to have more information about it:
 
 And seem like there's `Buffer Overflow` here so I tried with a very large padding for test:
 
-```sh
+```sh collapse={6-10, 20-25, 34-26}
 pwndbg> cyclic 0x3c
 aaaabaaacaaadaaaeaaafaaagaaahaaaiaaajaaakaaalaaamaaanaaaoaaa
 pwndbg> r
