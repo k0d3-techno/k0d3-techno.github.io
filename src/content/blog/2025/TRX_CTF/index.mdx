@@ -56,7 +56,7 @@ int main() {
 
 But the problem here is this binary has `PIE`, and there is no way for us to `ret2win` in a manual way, how about `Stack Pivot`? Still no because the `puts` function is above `read` function and there is `FULL RELRO` so this is impossible to leak the address too. We can think of `Partial Overwrite`, but this way is still impossible because the `main` function calls first, and when it returns, it will return to the function that called it (as known as `__libc_start_call_main()`) to exit.
 
-![alt text](../../img/TRC_CTF/image-1.png)
+![alt text](../../img/TRX/image-1.png)
 
 It feels pretty hopeless because there's no way to exploit it huh? But once we look carefully we know that there is `vsyscall` mapping page. The `vsyscall` partition is only visible when we enable `emulate` mode for the kernel.
 
@@ -83,7 +83,7 @@ reboot
 
 And when we finish and check `vmmap` again we can see it
 
-![alt text](../../img/TRC_CTF/image.png)
+![alt text](../../img/TRX/image.png)
 
 By reading this [article](https://0xax.gitbooks.io/linux-insides/content/SysCall/linux-syscall-3.html), we can understand the purpose and functionality of `vsyscall` and `vDSO`. In short, `vsyscall` (`virtual system call`) is a mechanism in the Linux kernel designed to speed up certain system calls. The kernel maps a special memory page into user space, which contains predefined variables and implementations of specific system calls. One notable characteristic of `vsyscall` is that its address is `static`, meaning it is not affected by `PIE`. And as we can see in `__vsyscall_page` symbol which is defined in [vsyscall_emu_64.S](https://codebrowser.dev/linux/linux/arch/x86/entry/vsyscall/vsyscall_emu_64.S.html)
 
