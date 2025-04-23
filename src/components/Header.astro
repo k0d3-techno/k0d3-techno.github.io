@@ -5,6 +5,7 @@ import MobileMenu from '@/components/ui/mobile-menu'
 import { NAV_LINKS, SITE } from '@/consts'
 import { Image } from 'astro:assets'
 import logo from '../../public/static/logo.svg'
+import SearchWrapper from './SearchWrapper.astro'
 ---
 
 <header
@@ -31,6 +32,9 @@ import logo from '../../public/static/logo.svg'
           ))
         }
       </nav>
+      <div class="w-full flex-1 md:w-auto md:flex-none">
+        <SearchWrapper />
+      </div>
       <MobileMenu client:load transition:persist />
       <ThemeToggle transition:persist />
     </div>
