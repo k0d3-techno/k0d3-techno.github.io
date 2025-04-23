@@ -462,7 +462,7 @@ if __name__ == '__main__':
     exploit()
 ```
 
-Trong exploit trên mình tin chọn 2 địa chỉ uy tín nhất và khá ít khi thay đổi đó là `saved rip` và `saved rbp`, từ đó mình leak được địa chỉ của `main` và `stack`, việc ta làm là dùng `fmtstr_payload` để write `saved rip` thành địa chỉ `print_flag`. **Lưu ý:** Offset trong `fmtstr_payload` là `offset` tính từ `top stack` đến `input`. Và khi ta `debug` ta thấy input của ta được đặt tại `rsp` tức `top stack` luôn nên offset sẽ là `6`. Còn tại sao nó là 6 thì hãy xem video <(")
+Trong exploit trên mình tin chọn 2 địa chỉ uy tín nhất và khá ít khi thay đổi đó là `saved rip` và `saved rbp`, từ đó mình leak được địa chỉ của `main` và `stack`, việc ta làm là dùng `fmtstr_payload` để write `saved rip` thành địa chỉ `print_flag`. **Lưu ý:** Offset trong `fmtstr_payload` là `offset` tính từ `top stack` đến `input`. Và khi ta `debug` ta thấy input của ta được đặt tại `rsp` tức `top stack` luôn nên offset sẽ là `6`. Còn tại sao nó là 6 thì hãy xem video
 
 ## handoff
 
