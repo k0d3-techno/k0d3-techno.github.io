@@ -32,7 +32,8 @@ export default defineConfig({
         wrap: true,
         collapseStyle: 'collapsible-auto',
         overridesByLang: {
-          'ansi,bat,bash,batch,cmd,console,powershell,ps,ps1,psd1,psm1,sh,shell,shellscript,shellsession,text,zsh,py,asm,c,cpp':
+        //   'ansi,bat,bash,batch,cmd,console,powershell,ps,ps1,psd1,psm1,sh,shell,shellscript,shellsession,text,zsh,py,asm,c,cpp':
+        '*':
             {
               showLineNumbers: true,
             },
@@ -80,7 +81,7 @@ export default defineConfig({
     enabled: false,
   },
   markdown: {
-    syntaxHighlight: false,
+    syntaxHighlight: "shiki",
     rehypePlugins: [
       [
         rehypeDocument,
