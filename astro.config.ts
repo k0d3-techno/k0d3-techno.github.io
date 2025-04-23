@@ -21,10 +21,10 @@ import { pluginLineNumbers } from '@expressive-code/plugin-line-numbers'
 import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
-  site: 'https://astro-erudite.vercel.app',
+  site: 'https://5o1z.github.io',
   integrations: [
     expressiveCode({
-      themes: ['github-light', 'github-dark'],
+      themes: ['github-light-high-contrast', 'github-dark-high-contrast'],
       plugins: [pluginCollapsibleSections(), pluginLineNumbers()],
       useDarkModeMediaQuery: false,
       themeCssSelector: (theme) => `.${theme.name.split('-')[1]}`,
@@ -32,9 +32,9 @@ export default defineConfig({
         wrap: true,
         collapseStyle: 'collapsible-auto',
         overridesByLang: {
-          'ansi,bat,bash,batch,cmd,console,powershell,ps,ps1,psd1,psm1,sh,shell,shellscript,shellsession,text,zsh':
+          'ansi,bat,bash,batch,cmd,console,powershell,ps,ps1,psd1,psm1,sh,shell,shellscript,shellsession,text,zsh,py,asm,c,cpp':
             {
-              showLineNumbers: false,
+              showLineNumbers: true,
             },
         },
       },
@@ -101,8 +101,8 @@ export default defineConfig({
         rehypePrettyCode,
         {
           theme: {
-            light: 'github-light',
-            dark: 'github-dark',
+            light: 'github-light-high-contrast',
+            dark: 'github-dark-high-contrast',
           },
         },
       ],
