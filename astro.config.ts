@@ -29,7 +29,7 @@ export default defineConfig({
       useDarkModeMediaQuery: false,
       themeCssSelector: (theme) => `.${theme.name.split('-')[1]}`,
       defaultProps: {
-        wrap: true,
+        wrap: false,
         collapseStyle: 'collapsible-auto',
         overridesByLang: {
         //   'ansi,bat,bash,batch,cmd,console,powershell,ps,ps1,psd1,psm1,sh,shell,shellscript,shellsession,text,zsh,py,asm,c,cpp':
@@ -42,6 +42,7 @@ export default defineConfig({
       styleOverrides: {
         borderColor: 'var(--border)',
         codeFontFamily: 'var(--font-mono)',
+        codeFontSize: '0.965pm',
         codeBackground:
           'color-mix(in oklab, var(--secondary) 25%, transparent)',
         frames: {

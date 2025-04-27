@@ -251,3 +251,15 @@
 [data-slot='theme-toggle'] {
   @apply flex h-9 w-9 items-center justify-center rounded-md border transition-colors;
 }
+body,
+p,
+div,
+span,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  text-align: justify;
+}
