@@ -227,7 +227,6 @@
   @apply bg-secondary/50 text-secondary-foreground rounded-md px-2 py-0.5 text-xs;
 }
 
-/* Custom scrollbar for search results */
 .scrollbar-search {
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;

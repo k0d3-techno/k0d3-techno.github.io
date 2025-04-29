@@ -82,7 +82,7 @@ export default defineConfig({
     enabled: false,
   },
   markdown: {
-    syntaxHighlight: "shiki",
+    syntaxHighlight: false,
     rehypePlugins: [
       [
         rehypeDocument,

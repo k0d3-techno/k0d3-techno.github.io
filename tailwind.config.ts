@@ -16,7 +16,8 @@ export default {
         fadeIn: 'fadeIn 0.2s ease-out'
       },
       height: {
-        'search-results': 'calc(100vh - 180px)', // Add custom height
+        'search-results': 'calc(100vh - 180px)',
+        'code-block': '400px', // Add custom height for code blocks
       }
     },
   },
