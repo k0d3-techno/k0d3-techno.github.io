@@ -8,7 +8,19 @@ authors: ['kdot']
 draft: false
 ---
 
+import Challenge from '@/components/mdx/Challenge.astro'
+
 ## pwn/gambling2
+
+<Challenge
+  authors={["aparker"]}
+  category="pwn"
+  points={306}
+  solves={190}
+  description="i gambled all of my life savings in this program (i have no life savings)"
+  flag="UMDCTF{99_percent_of_pwners_quit_before_they_get_a_shell_congrats_on_being_the_1_percent}"
+>
+</Challenge>
 
 ```sh title="Binary checksec"
 alter ^ Sol in /mnt/e/sec/CTFs/2025/UMD/gambling2
@@ -269,12 +281,21 @@ def exploit():
 
 if __name__ == '__main__':
     exploit()
-# UMDCTF{99_percent_of_pwners_quit_before_they_get_a_shell_congrats_on_being_the_1_percent}
 ```
 
 ---
 
 ## pwn/unfinished
+
+<Challenge
+  authors={["aparker"]}
+  category="pwn"
+  points={420}
+  solves={94}
+  description="TODO: finish the challenge"
+  flag="UMDCTF{crap_i_have_to_come_up_with_a_flag_too?????????}"
+>
+</Challenge>
 
 ```sh title="Binary checksec"
 alter ^ Sol in /mnt/e/sec/CTFs/2025/UMD/unfinished
@@ -492,13 +513,21 @@ def exploit():
 
 if __name__ == '__main__':
     exploit()
-
-# UMDCTF{crap_i_have_to_come_up_with_a_flag_too?????????}
 ```
 
 ---
 
 ## pwn/aura
+
+<Challenge
+  authors={["esiddali"]}
+  category="pwn"
+  points={438}
+  solves={77}
+  description="I can READ ur aura."
+  flag="UMDCTF{+100aur4}"
+>
+</Challenge>
 
 ```sh title="Binary checksec"
 alter ^ Sol in /mnt/e/sec/CTFs/2025/UMD/aura
@@ -682,13 +711,20 @@ def exploit():
 
 if __name__ == '__main__':
     exploit()
-
-# UMDCTF{+100aur4}
 ```
 
 ---
 
 ## pwn/prison-realm
+
+<Challenge
+  authors={["evilmuffinha", "clam"]}
+  category="pwn"
+  points={486}
+  solves={20}
+  flag="UMDCTF{are_you_sice_man_because_you_were_BORN_TO_ALLOC_WORLD_IS_A_HEAP_Free_Em_All_1972_or_are_you_BORN_TO_ALLOC_WORLD_IS_A_HEAP_Free_Em_All_1972_because_you_are_sice_man}"
+>
+</Challenge>
 
 ```sh title='Binary checksec'
 alter ^ Sol in /mnt/e/sec/CTFs/2025/UMD/prison-realm
@@ -861,13 +897,22 @@ def exploit():
 
 if __name__ == '__main__':
     exploit()
-
-# UMDCTF{are_you_sice_man_because_you_were_BORN_TO_ALLOC_WORLD_IS_A_HEAP_Free_Em_All_1972_or_are_you_BORN_TO_ALLOC_WORLD_IS_A_HEAP_Free_Em_All_1972_because_you_are_sice_man}
 ```
 
 ---
 
 ## rev/deobfuscation
+
+
+<Challenge
+  authors={["unsure"]}
+  category="rev"
+  points={111}
+  solves={390}
+  description="the chall is not that complex. the key is to read ASSEMBLY!"
+  flag="UMDCTF{r3v3R$E-i$_Th3_#B3ST#_4nT!-M@lW@r3_t3chN!Qu3}"
+>
+</Challenge>
 
 ```c title="IDA decompile"
 void __noreturn start()
@@ -956,6 +1001,4 @@ flag = ''.join(
 )
 
 print(flag)
-
-# UMDCTF{r3v3R$E-i$_Th3_#B3ST#_4nT!-M@lW@r3_t3chN!Qu3}
 ```

@@ -1,0 +1,16 @@
+---
+interface Props {
+    name: string
+}
+
+const { name } = Astro.props
+---
+
+<span class="text-xs leading-none">
+    <img
+        src={`https://raw.githubusercontent.com/treboryx/ctf/main/flags/${name}.png`}
+        alt={name}
+        class="inline-block h-3.5 w-auto mr-1"
+    />
+    {name}
+</span>

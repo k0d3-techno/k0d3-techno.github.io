@@ -1,0 +1,192 @@
+---
+import Link from '@/components/Link.astro'
+import AvatarComponent from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
+import { CheckCircle, FileText, PenTool, Star, Tag, Users, Flag } from 'lucide-react'
+
+interface Solver {
+  avatar?: string
+  href?: string
+  name: string
+}
+
+interface ChallengeProps {
+  title?: string
+  solvers?: Solver[]
+  authors?: string[]
+  points?: number
+  category?: string
+  solves?: number
+  files?: string[]
+  description?: string
+  flag?: string
+}
+
+const {
+  title,
+  solvers = [],
+  authors = [],
+  points,
+  category,
+  solves,
+  files = [],
+  description,
+  flag,
+} = Astro.props as ChallengeProps
+---
+
+<div class="mx-auto flex flex-col gap-y-6 rounded-xl border p-6">
+  {
+    title && (
+      <div class="not-prose text-2xl font-bold text-foreground">{title}</div>
+    )
+  }
+  <div class="not-prose flex flex-col divide-y divide-border">
+    {
+      solvers.length > 0 && (
+        <div class="flex items-center gap-x-6 py-3 first:pt-0 last:pb-0">
+          <div class="flex flex-1 items-center gap-x-3 text-sm font-medium text-muted-foreground">
+            <Users className="size-5" />
+            {solvers.length > 1 ? 'Solvers' : 'Solver'}
+          </div>
+          <div class="flex flex-1 flex-wrap gap-y-2">
+            {solvers.map((solver, index) => (
+              <div class="flex items-center">
+                {solver.href ? (
+                  <Link
+                    href={solver.href}
+                    class="flex items-center gap-x-2"
+                    underline
+                  >
+                    <AvatarComponent
+                      client:load
+                      src={solver.avatar || '/static/logo.webp'}
+                      alt={`${solver.name}'s avatar`}
+                      fallback={solver.name[0]}
+                      className="size-5 rounded-full"
+                    />
+                    <span class="text-sm text-foreground">{solver.name}</span>
+                  </Link>
+                ) : (
+                  <div class="flex items-center gap-x-2">
+                    <AvatarComponent
+                      client:load
+                      src={solver.avatar || '/static/logo.webp'}
+                      alt={`${solver.name}'s avatar`}
+                      fallback={solver.name[0]}
+                      className="size-5 rounded-full"
+                    />
+                    <span class="text-sm text-foreground">{solver.name}</span>
+                  </div>
+                )}
+                {index < solvers.length - 1 && <span class="mr-2">,</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    }
+    {
+      authors.length > 0 && (
+        <div class="flex items-center gap-x-6 py-3">
+          <div class="flex flex-1 items-center gap-x-3 text-sm font-medium text-muted-foreground">
+            <PenTool className="size-5" />
+            {authors.length > 1 ? 'Authors' : 'Author'}
+          </div>
+          <div class="flex-1 text-sm">{authors.join(', ')}</div>
+        </div>
+      )
+    }
+    {
+      category && (
+        <div class="flex items-center gap-x-6 py-3">
+          <div class="flex flex-1 items-center gap-x-3 text-sm font-medium text-muted-foreground">
+            <Tag className="size-5" />
+            Category
+          </div>
+          <div class="flex-1 text-sm">{category}</div>
+        </div>
+      )
+    }
+
+    {
+      points !== undefined && (
+        <div class="flex items-center gap-x-6 py-3">
+          <div class="flex flex-1 items-center gap-x-3 text-sm font-medium text-muted-foreground">
+            <Star className="size-5" />
+            Points
+          </div>
+          <div class="flex-1 text-sm">{points}</div>
+        </div>
+      )
+    }
+    {
+      solves !== undefined && (
+        <div class="flex items-center gap-x-6 py-3">
+          <div class="flex flex-1 items-center gap-x-3 text-sm font-medium text-muted-foreground">
+            <CheckCircle className="size-5" />
+            Solves
+          </div>
+          <div class="flex-1 text-sm">{solves}</div>
+        </div>
+      )
+    }
+    {
+      files.length > 0 && (
+        <div class="flex items-center gap-x-6 py-3">
+          <div class="flex flex-1 items-center gap-x-3 text-sm font-medium text-muted-foreground">
+            <FileText className="size-5" />
+            Files
+          </div>
+          <div class="flex flex-1 flex-wrap gap-3">
+            {files.map((file) => {
+              const fileName = file.split('/').pop();
+              return (
+                <a
+                  href={file}
+                  download
+                  class="inline-flex"
+                >
+                  <Badge
+                    variant="secondary"
+                    className="flex items-center gap-x-2 text-sm px-3 py-1 hover:bg-secondary/80 cursor-pointer"
+                  >
+                    <FileText className="size-4" />
+                    {fileName}
+                  </Badge>
+                </a>
+              );
+            })}
+          </div>
+        </div>
+      )
+    }
+        {
+      description && (
+        <div class="flex items-center gap-x-6 py-3">
+          <div class="flex flex-1 items-center gap-x-3 text-sm font-medium text-muted-foreground">
+            <FileText className="size-5" />
+            Description
+          </div>
+          <div class="flex-1 text-sm">{description}</div>
+        </div>
+      )
+    }
+    {
+      flag && (
+        <div class="flex items-center gap-x-6 py-3">
+          <div class="flex flex-1 items-center gap-x-3 text-sm font-medium text-muted-foreground">
+            <Flag className="size-5" />
+            Flag
+          </div>
+          <div class="flex-1 text-sm">
+            <span class="blur-[4px] hover:blur-none transition-all duration-200 font-bold break-all">{flag}</span>
+          </div>
+        </div>
+      )
+    }
+  </div>
+  <div class="-my-6">
+    <slot />
+  </div>
+</div>
