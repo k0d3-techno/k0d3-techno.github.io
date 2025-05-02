@@ -2,12 +2,12 @@
 
 @layer components {
   .prose {
-    @apply text-foreground text-base leading-8;
+    @apply text-foreground text-[16px] leading-8;
     @apply [&>*]:first:mt-0 [&>*]:last:mb-0 [&>section:first-child>*]:mt-0 [&>section:last-child>*]:mb-0;
 
     p {
       @apply text-foreground/80 my-5 leading-7 not-first:mt-5;
-      @apply text-lg leading-7;
+      @apply text-[16px] leading-7;
     }
 
     h1 {
@@ -59,6 +59,7 @@
 
     li {
       @apply text-foreground/80 pl-2 leading-7 [&>p]:my-0;
+      @apply text-[16px];
     }
 
     ul ul,
@@ -69,7 +70,8 @@
     }
 
     code {
-      @apply bg-muted/50 text-foreground relative rounded-sm px-[0.3rem] py-[0.2rem] text-sm font-medium;
+      @apply bg-muted/30 relative rounded-sm px-[0.3rem] py-[0.2rem] font-medium text-[#ff3333];
+      @apply text-[16px];
       @apply [&>span[data-line='']>*]:text-(--shiki-light) dark:[&>span[data-line='']>*]:text-(--shiki-dark);
     }
 

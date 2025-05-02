@@ -163,7 +163,7 @@
   }
 
   html {
-    @apply bg-background text-foreground scheme-light;
+    @apply bg-background text-foreground text-[16px] scheme-light;
 
     &.dark {
       @apply scheme-dark;
@@ -172,6 +172,16 @@
     ::-webkit-scrollbar-corner {
       @apply bg-transparent;
     }
+  }
+
+  /* Add styles for inline code and bold text */
+  code:not(pre code) {
+    @apply font-medium text-[#ff3333];
+  }
+
+  strong,
+  b {
+    @apply font-bold text-[inherit];
   }
 
   .disable-transitions * {
