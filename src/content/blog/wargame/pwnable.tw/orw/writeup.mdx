@@ -8,11 +8,16 @@ authors: ['kdot']
 draft: false
 ---
 
+import Challenge from '@/components/mdx/Challenge.astro'
+
 # Challenge Information
-Description: `Read the flag from /home/orw/flag. Only open read write syscall are allowed to use.`
-Tags:
-- Shellcode
-- Bypass SECCOMP
+<Challenge
+  category="pwn"
+  points={100}
+  description="Read the flag from /home/orw/flag. Only open read write syscall are allowed to use."
+  flag="FLAG{sh3llc0ding_w1th_op3n_r34d_writ3}"
+>
+</Challenge>
 
 # Reverse Engineering
 
@@ -369,22 +374,4 @@ def exploit():
 
 if __name__ == '__main__':
   exploit()
-```
-
-# Get flag
-
-```sh
-alter ^ Sol in ~/lab/pwnable.tw/orw
-$ ./xpl.py REMOTE chall.pwnable.tw 10001
-[*] '/usr/lib/i386-linux-gnu/libc.so.6'
-    Arch:       i386-32-little
-    RELRO:      Partial RELRO
-    Stack:      Canary found
-    NX:         NX enabled
-    PIE:        PIE enabled
-    SHSTK:      Enabled
-    IBT:        Enabled
-[+] Opening connection to chall.pwnable.tw on port 10001: Done
-[*] Switching to interactive mode
-FLAG{sh3llc0ding_w1th_op3n_r34d_writ3}
 ```

