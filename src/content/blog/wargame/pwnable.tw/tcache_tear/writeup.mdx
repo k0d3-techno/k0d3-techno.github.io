@@ -152,7 +152,7 @@ In this part, I will show two ways to leak libc address. I know everyone is look
 
 ### Leak libc address
 
-#### Method 1: Using `info` function
+#### Method 1: `info` function
 
 After analyzing the program, we know the above 2 bugs. In addition to the info functionn it performs `write(1, &gbuf, 0x20)`, which means it will take the `0x20` bytes stored in `gbuf` and print out them. If we can overwrite `gbuf` so that its first eight bytes hold a libc address, then calling `info` function will spit out that address.
 To do that we need to mention our friend `unsortedbin` again, we know that after a chunk is freed and goes into `unsortedbin` its `fd` and `bk` pointer will be the address of `main_arena+96` which is in libc (I'm considering the case that it is the only chunk in `unsortedbin`)
@@ -241,7 +241,7 @@ Call `info` function and we will have libc address leaked:
         n: 0x20
 ```
 
-#### Method 2: Using `fsop`
+#### Method 2: `FSOP`
 
 This method is similar but the only difference is that we craft `fake_struct` for stdout. We know that in the `mallocFun` function, there is a call to the `puts` function and this function will call the following functions in sequence `__GI__IO_file_xsputn` -> `__GI__IO_file_overflow` -> `_IO_file_write`. And some basic points in our fake struct that we need to note are that `_IO_read_end` must be equal to `fp->_IO_write_base` (this check is in the `_IO_new_do_write` function), and we will target here `write(f->_fileno, _IO_write_base, _IO_write_ptr - _IO_write_base);` with `f->fileno` being our fd, `_IO_write_base` will be where the printed address is stored, and `_IO_write_ptr - _IO_write_base` is the number of bytes printed. So my payload is:
 
