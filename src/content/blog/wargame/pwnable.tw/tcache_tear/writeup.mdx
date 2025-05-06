@@ -154,7 +154,7 @@ In this part, I will show two ways to leak libc address. I know everyone is look
 
 #### Method 1: Using `info` function
 
-After analyzing the program, we know the above 2 errors. In addition to the info functionn it performs `write(1, &gbuf, 0x20)`, which means it will take the `0x20` bytes stored in `gbuf` and print out them. If we can overwrite `gbuf` so that its first eight bytes hold a libc address, then calling `info` function will spit out that address.
+After analyzing the program, we know the above 2 bugs. In addition to the info functionn it performs `write(1, &gbuf, 0x20)`, which means it will take the `0x20` bytes stored in `gbuf` and print out them. If we can overwrite `gbuf` so that its first eight bytes hold a libc address, then calling `info` function will spit out that address.
 To do that we need to mention our friend `unsortedbin` again, we know that after a chunk is freed and goes into `unsortedbin` its `fd` and `bk` pointer will be the address of `main_arena+96` which is in libc (I'm considering the case that it is the only chunk in `unsortedbin`)
 
 So we'll create a fake chunk whose size is within the range of this `unsortedbin` friend. I'll put it at `gbuf` - 0x10 because when we free this `fake chunk` `fd` and `bk` will be added to the exact location we want. But note that we have to create 2 more fake chunks to bypass GLIBC Mitigation (if you're curious about what that mitigation is, you can see it [here](https://elixir.bootlin.com/glibc/glibc-2.27/source/malloc/malloc.c#L4281))
@@ -243,7 +243,7 @@ Call `info` function and we will have libc address leaked:
 
 #### Method 2: Using `fsop`
 
-This method is similar but the only difference is that we craft `fake_struct` for stdout. We know that in the `mallocFun` function, there is a call to the `puts` function and this function will call the following functions in sequence `__GI__IO_file_xsputn` -> `__GI__IO_file_overflow` -> `_IO_file_write`. And some basic points in our fake struct that we need to note are that `_IO_read_end` must be equal to `fp->_IO_write_base` (this check is in the `_IO_new_do_write` function), and we will target here `write(f->_fileno, _IO_write_base, _IO_write_ptr - _IO_write_base);` with `f->fileno` being our fd, `_IO_write_base` will be where the printed address is stored, and `_IO_write_ptr - _IO_write_base` is the number of bytes printed. So my paylaod is:
+This method is similar but the only difference is that we craft `fake_struct` for stdout. We know that in the `mallocFun` function, there is a call to the `puts` function and this function will call the following functions in sequence `__GI__IO_file_xsputn` -> `__GI__IO_file_overflow` -> `_IO_file_write`. And some basic points in our fake struct that we need to note are that `_IO_read_end` must be equal to `fp->_IO_write_base` (this check is in the `_IO_new_do_write` function), and we will target here `write(f->_fileno, _IO_write_base, _IO_write_ptr - _IO_write_base);` with `f->fileno` being our fd, `_IO_write_base` will be where the printed address is stored, and `_IO_write_ptr - _IO_write_base` is the number of bytes printed. So my payload is:
 
 ```py title='exploit.py'
     STDOUT_ADDR = 0x602020

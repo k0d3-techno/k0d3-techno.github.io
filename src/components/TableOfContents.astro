@@ -10,6 +10,47 @@ type Props = {
 
 const { headings } = Astro.props
 
+// Group headings by hierarchy
+interface HeadingWithChildren extends MarkdownHeading {
+  children: HeadingWithChildren[]
+}
+
+// Only consider headings with depth >= 2 (h2, h3, etc.)
+const filteredHeadings = headings.filter((h) => h.depth >= 2)
+
+// Function to build a hierarchical structure from flat headings
+function buildHeadingTree(headings: MarkdownHeading[]): HeadingWithChildren[] {
+  const result: HeadingWithChildren[] = []
+  const stack: HeadingWithChildren[] = []
+
+  // First, convert all headings to HeadingWithChildren
+  const extendedHeadings = headings.map(h => ({...h, children: []})) as HeadingWithChildren[]
+
+  for (const heading of extendedHeadings) {
+    // Pop from stack until we find a parent or the stack is empty
+    while (stack.length > 0 && stack[stack.length - 1].depth >= heading.depth) {
+      stack.pop()
+    }
+
+    if (stack.length === 0) {
+      // This is a top-level heading
+      result.push(heading)
+    } else {
+      // This is a child heading, add it to its parent
+      stack[stack.length - 1].children.push(heading)
+    }
+
+    // If this heading can have children, push it to the stack
+    if (heading.depth < 6) {
+      stack.push(heading)
+    }
+  }
+
+  return result
+}
+
+const headingTree = buildHeadingTree(filteredHeadings)
+
 function getHeadingMargin(depth: number): string {
   const margins: Record<number, string> = {
     3: 'ml-4',
@@ -45,26 +86,97 @@ function getHeadingMargin(depth: number): string {
       id="table-of-contents"
     >
       <li class="hidden text-lg font-medium xl:block">Table of Contents</li>
+
+      <!-- Render Table of Contents with collapsible sections -->
       {
-        headings.map((heading) => (
-          <li
-            class={cn(
-              'text-foreground/60 px-4 text-sm xl:p-0',
-              getHeadingMargin(heading.depth),
-            )}
-          >
+        headingTree.map((heading) => (
+          <li class="toc-item">
+            <!-- Parent heading -->
             <a
               href={`#${heading.slug}`}
-              class="marker:text-foreground/30 list-item list-disc underline decoration-transparent underline-offset-[3px] transition-colors duration-200 hover:decoration-inherit xl:list-none"
+              class="text-foreground/60 marker:text-foreground/30 block list-item list-disc px-2 py-1 text-sm underline decoration-transparent underline-offset-[3px] transition-colors duration-200 hover:bg-accent/50 hover:decoration-inherit xl:list-none"
             >
               {heading.text}
             </a>
+
+            <!-- Subheadings (if any) -->
+            {heading.children.length > 0 && (
+              <ul class="toc-subheadings ml-4">
+                {heading.children.map((subheading) => (
+                  <li class="toc-subitem">
+                    <a
+                      href={`#${subheading.slug}`}
+                      class={cn(
+                        "text-foreground/60 block px-2 py-1 text-sm underline decoration-transparent underline-offset-[3px] transition-colors duration-200 hover:bg-accent/50 hover:decoration-inherit",
+                        getHeadingMargin(subheading.depth),
+                      )}
+                    >
+                      {subheading.text}
+                    </a>
+
+                    <!-- Recursive rendering for deeper levels (if any) -->
+                    {subheading.children.length > 0 && (
+                      <ul class="toc-deeper-subheadings ml-4">
+                        {subheading.children.map((deeperSubheading) => (
+                          <li>
+                            <a
+                              href={`#${deeperSubheading.slug}`}
+                              class={cn(
+                                "text-foreground/60 block px-2 py-1 text-sm underline decoration-transparent underline-offset-[3px] transition-colors duration-200 hover:bg-accent/50 hover:decoration-inherit",
+                                getHeadingMargin(deeperSubheading.depth),
+                              )}
+                            >
+                              {deeperSubheading.text}
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </li>
         ))
       }
     </ul>
   </ScrollArea>
 </details>
+
+<style>
+  .toc-item {
+    position: relative;
+  }
+
+  .toc-subitem {
+    position: relative;
+  }
+
+  .toc-subheadings,
+  .toc-deeper-subheadings {
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    transition: all 0.4s ease;
+  }
+
+  .toc-subheadings.active,
+  .toc-deeper-subheadings.active {
+    max-height: 500px;
+    opacity: 1;
+    margin-top: 4px;
+    margin-bottom: 4px;
+    padding: 4px 0;
+  }
+
+  .toc-item.active > a,
+  .toc-subitem.active > a {
+    font-weight: 500;
+    color: var(--color-text-primary, currentColor);
+  }
+</style>
 
 <script>
   function setupToc() {
@@ -79,7 +191,7 @@ function getHeadingMargin(depth: number): string {
 
           const id = heading.getAttribute('id')
           const link = document.querySelector(
-            `#table-of-contents li a[href="#${id}"]`,
+            `#table-of-contents a[href="#${id}"]`,
           )
           if (!link) return
 
@@ -98,6 +210,211 @@ function getHeadingMargin(depth: number): string {
     })
   }
 
-  document.addEventListener('astro:page-load', setupToc)
-  document.addEventListener('astro:after-swap', setupToc)
+  // Cải thiện xử lý hover và bung menu tự động
+  function setupTocHover() {
+    const tocItems = document.querySelectorAll<HTMLElement>('.toc-item, .toc-subitem');
+    let activeItem: HTMLElement | null = null;
+    let closeTimer: number | null = null; // Timer để đóng menu
+    const HOVER_CLOSE_DELAY = 10000; // 10 giây khi hover
+    const CLICK_CLOSE_DELAY = 5000; // 5 giây sau khi click
+    let isClickActivated = false; // Biến để theo dõi xem menu được mở do click hay hover
+
+    // Khởi tạo ban đầu - kiểm tra xem các menu nào có submenu
+    tocItems.forEach(item => {
+      const submenu = item.querySelector('.toc-subheadings, .toc-deeper-subheadings');
+      // Đặt một thuộc tính dữ liệu nếu item có submenu
+      if (submenu) {
+        item.setAttribute('data-has-submenu', 'true');
+      }
+    });
+
+    // Hàm để đóng tất cả submenus
+    function closeAllSubmenus() {
+      document.querySelectorAll('.toc-subheadings, .toc-deeper-subheadings').forEach(submenu => {
+        submenu.classList.remove('active');
+      });
+
+      document.querySelectorAll('.toc-item, .toc-subitem').forEach(item => {
+        item.classList.remove('active');
+      });
+
+      activeItem = null;
+      isClickActivated = false;
+    }
+
+    // Hàm để mở submenu của item
+    function openSubmenu(item: HTMLElement, viaClick = false) {
+      if (!item.getAttribute('data-has-submenu')) return;
+
+      // Xóa timer đóng menu nếu có
+      if (closeTimer !== null) {
+        clearTimeout(closeTimer);
+        closeTimer = null;
+      }
+
+      // Đánh dấu là được kích hoạt bởi click nếu cần
+      if (viaClick) {
+        isClickActivated = true;
+      }
+
+      // Đóng menu đang mở trước đó (nếu không phải là cha/con của item hiện tại)
+      if (activeItem && !activeItem.contains(item) && !item.contains(activeItem)) {
+        const oldSubmenu = activeItem.querySelector('.toc-subheadings, .toc-deeper-subheadings');
+        if (oldSubmenu) {
+          oldSubmenu.classList.remove('active');
+        }
+        activeItem.classList.remove('active');
+      }
+
+      // Mở menu mới
+      const submenu = item.querySelector('.toc-subheadings, .toc-deeper-subheadings');
+      if (submenu) {
+        submenu.classList.add('active');
+        item.classList.add('active');
+        activeItem = item;
+
+        // Nếu được mở bằng click, đặt timer để đóng sau 5 giây
+        if (viaClick) {
+          scheduleCloseSubmenu(item);
+        }
+      }
+    }
+
+    // Hàm để đặt timer đóng menu sau một khoảng thời gian
+    function scheduleCloseSubmenu(item: HTMLElement) {
+      // Xóa timer cũ nếu có
+      if (closeTimer !== null) {
+        clearTimeout(closeTimer);
+      }
+
+      // Chọn thời gian trễ dựa vào việc menu được kích hoạt bởi click hay hover
+      const delay = isClickActivated ? CLICK_CLOSE_DELAY : HOVER_CLOSE_DELAY;
+
+      // Đặt timer mới
+      closeTimer = window.setTimeout(() => {
+        const submenu = item.querySelector('.toc-subheadings, .toc-deeper-subheadings');
+        if (submenu) {
+          submenu.classList.remove('active');
+          item.classList.remove('active');
+          if (activeItem === item) {
+            activeItem = null;
+            isClickActivated = false; // Reset lại trạng thái click
+          }
+        }
+      }, delay);
+    }
+
+    // Xử lý khi hover vào mục
+    tocItems.forEach(item => {
+      if (!item.getAttribute('data-has-submenu')) return;
+
+      // Khi di chuột vào, mở submenu (chỉ nếu không phải đã được mở bằng click)
+      item.addEventListener('mouseenter', () => {
+        if (!isClickActivated) {
+          openSubmenu(item, false); // false = not via click
+        }
+      });
+
+      // Khi di chuột ra, đặt timer để đóng submenu sau khoảng thời gian
+      // (chỉ khi menu được mở bằng hover, không phải click)
+      item.addEventListener('mouseleave', (event: MouseEvent) => {
+        // Nếu menu được mở bằng click, không làm gì cả
+        if (isClickActivated) return;
+
+        // Kiểm tra xem chuột có di chuyển vào submenu không
+        const relatedTarget = event.relatedTarget as Element | null;
+        const submenu = item.querySelector('.toc-subheadings, .toc-deeper-subheadings');
+
+        if (submenu &&
+            relatedTarget &&
+            !submenu.contains(relatedTarget) &&
+            !item.contains(relatedTarget)) {
+          scheduleCloseSubmenu(item);
+        }
+      });
+
+      // Xử lý click để toggle menu và đặt thời gian đóng dài hơn
+      item.addEventListener('click', (event: MouseEvent) => {
+        // Nếu là thẻ <a>, không làm gì cả để cho phép điều hướng
+        const target = event.target as HTMLElement;
+        if (target && target.tagName && target.tagName.toLowerCase() === 'a') {
+          return;
+        }
+
+        // Nếu click vào item, toggle submenu
+        const submenu = item.querySelector('.toc-subheadings, .toc-deeper-subheadings');
+        if (submenu) {
+          if (submenu.classList.contains('active')) {
+            submenu.classList.remove('active');
+            item.classList.remove('active');
+            activeItem = null;
+            isClickActivated = false;
+          } else {
+            openSubmenu(item, true); // true = via click, đợi đúng 5 giây rồi đóng lại
+          }
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      });
+    });
+
+    // Theo dõi di chuyển chuột trên toàn bộ TOC
+    const tocContainer = document.getElementById('table-of-contents');
+    if (tocContainer) {
+      // Khi di chuột vào container TOC, hủy timer đóng menu nếu không phải là click
+      tocContainer.addEventListener('mouseenter', () => {
+        if (closeTimer !== null && !isClickActivated) {
+          clearTimeout(closeTimer);
+          closeTimer = null;
+        }
+      });
+
+      // Khi di chuột ra khỏi container TOC hoàn toàn
+      tocContainer.addEventListener('mouseleave', () => {
+        // Chỉ đóng menu nếu chuột đã rời khỏi TOC hoàn toàn và không phải là click
+        if (activeItem && !isClickActivated) {
+          scheduleCloseSubmenu(activeItem);
+        }
+      });
+
+      document.addEventListener('click', (event: MouseEvent) => {
+        const target = event.target as Node;
+        if (target && !tocContainer.contains(target)) {
+          closeAllSubmenus();
+        }
+      });
+    }
+
+    function activateCurrentSection() {
+      const currentHash = window.location.hash;
+      if (currentHash) {
+        const targetLink = document.querySelector(`#table-of-contents a[href="${currentHash}"]`);
+        if (targetLink) {
+          const parentItem = targetLink.closest('.toc-item, .toc-subitem') as HTMLElement | null;
+          if (parentItem) {
+            let parent: HTMLElement | null = parentItem;
+            while (parent) {
+              openSubmenu(parent);
+              // Thêm chú thích kiểu cho parentEl để tránh lỗi ts(7022)
+              const parentEl: HTMLElement | null = parent.parentElement;
+              parent = parentEl ? parentEl.closest('.toc-item, .toc-subitem') as HTMLElement | null : null;
+            }
+          }
+        }
+      }
+    }
+    activateCurrentSection();
+
+    window.addEventListener('hashchange', activateCurrentSection);
+  }
+
+  document.addEventListener('astro:page-load', () => {
+    setupToc();
+    setupTocHover();
+  });
+
+  document.addEventListener('astro:after-swap', () => {
+    setupToc();
+    setupTocHover();
+  });
 </script>

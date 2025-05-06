@@ -272,3 +272,36 @@ h5,
 h6 {
   text-align: justify;
 }
+
+/* Center-align main post titles */
+.content-wrapper h1:first-of-type,
+article > h1:first-of-type,
+.prose > h1:first-of-type,
+[data-post-title],
+section h1.text-4xl,
+section h1.text-5xl,
+h1.mb-2.text-4xl,
+h1.mb-2.text-5xl {
+  text-align: center !important;
+}
+
+/* Direct targeting for post titles */
+section .text-4xl.leading-tight,
+h1.text-4xl.leading-tight,
+.text-4xl.leading-tight.font-medium.text-pretty,
+main h1,
+main section h1 {
+  text-align: center !important;
+}
+
+/* Extra specific selector for post title */
+h1.mb-2.text-4xl.leading-tight.font-medium.text-pretty {
+  text-align: center !important;
+}
+
+/* MDX content h1 for blog posts */
+article.prose > h1,
+.prose h1,
+article h1 {
+  text-align: center !important;
+}
