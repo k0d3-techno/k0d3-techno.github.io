@@ -1,0 +1,27 @@
+---
+import Lightbox from '../ui/lightbox'
+
+interface Props {
+  src: ImageMetadata
+  alt: string
+  caption?: string
+  class?: string
+}
+
+const {
+  src,
+  alt,
+  caption,
+  class: className = ""
+} = Astro.props
+---
+
+<figure class="not-prose my-6 flex flex-col items-center">
+  <Lightbox
+    client:visible
+    src={src.src}
+    alt={alt}
+    className={`rounded-lg ${className}`}
+  />
+  {caption && <figcaption class="text-muted-foreground mt-2 text-center text-sm">{caption}</figcaption>}
+</figure>
