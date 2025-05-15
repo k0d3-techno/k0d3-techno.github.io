@@ -88,7 +88,7 @@ And when we finish and check `vmmap` again we can see it
 
 By reading this [article](https://0xax.gitbooks.io/linux-insides/content/SysCall/linux-syscall-3.html), we can understand the purpose and functionality of `vsyscall` and `vDSO`. In short, `vsyscall` (`virtual system call`) is a mechanism in the Linux kernel designed to speed up certain system calls. The kernel maps a special memory page into user space, which contains predefined variables and implementations of specific system calls. One notable characteristic of `vsyscall` is that its address is `static`, meaning it is not affected by `PIE`. And as we can see in `__vsyscall_page` symbol which is defined in [vsyscall_emu_64.S](https://codebrowser.dev/linux/linux/arch/x86/entry/vsyscall/vsyscall_emu_64.S.html)
 
-```S
+```x86asm
 __vsyscall_page:
     mov $__NR_gettimeofday, %rax
     syscall
