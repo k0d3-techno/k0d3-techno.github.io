@@ -41,7 +41,17 @@ const authors = await parseAuthors(entry.data.authors ?? [])
     }
 
     <div class="grow">
-      <h3 class="mb-1 text-lg font-medium">{entry.data.title}</h3>
+      <div class="mb-1 relative">
+        <div class="flex flex-wrap items-start">
+          <h3 class="text-lg font-medium leading-tight pr-16">{entry.data.title}</h3>
+          {entry.data.pinned && (
+            <Badge variant="default" className="absolute top-0 right-0 flex items-center gap-x-1 bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 text-xs">
+              <Icon name="lucide:pin" class="size-3" />
+              Pinned
+            </Badge>
+          )}
+        </div>
+      </div>
       <p class="text-muted-foreground mb-2 text-sm">{entry.data.description}</p>
 
       <div

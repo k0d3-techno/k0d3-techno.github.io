@@ -1,6 +1,7 @@
 ---
 import Link from '@/components/Link.astro'
 import ThemeToggle from '@/components/ThemeToggle.astro'
+import SearchWrapper from '@/components/SearchWrapper.astro'
 import MobileMenu from '@/components/ui/mobile-menu'
 import { NAV_LINKS, SITE } from '@/consts'
 import { Image } from 'astro:assets'
@@ -31,6 +32,7 @@ import logo from '../../public/static/logo.svg'
                     ))
                 }
             </nav>
+            <SearchWrapper />
             <MobileMenu client:load transition:persist />
             <ThemeToggle transition:persist />
         </div>

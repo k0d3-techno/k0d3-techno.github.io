@@ -4,7 +4,13 @@ export async function getAllPosts(): Promise<CollectionEntry<'blog'>[]> {
   const posts = await getCollection('blog')
   return posts
     .filter((post) => !post.data.draft)
-    .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf())
+    .sort((a, b) => {
+      // First, sort by pinned status (pinned posts first)
+      if (a.data.pinned && !b.data.pinned) return -1
+      if (!a.data.pinned && b.data.pinned) return 1
+      // Then sort by date (newest first)
+      return b.data.date.valueOf() - a.data.date.valueOf()
+    })
 }
 
 export async function getRecentPosts(
@@ -111,4 +117,35 @@ export async function getPostsByTag(
 ): Promise<CollectionEntry<'blog'>[]> {
   const posts = await getAllPosts()
   return posts.filter((post) => post.data.tags?.includes(tag))
+}
+
+export async function getPinnedPosts(): Promise<CollectionEntry<'blog'>[]> {
+  const posts = await getAllPosts()
+  return posts.filter((post) => post.data.pinned === true)
+}
+
+export async function getRecentPostsExcludingPinned(
+  count: number,
+): Promise<CollectionEntry<'blog'>[]> {
+  const posts = await getAllPosts()
+  const nonPinnedPosts = posts.filter((post) => !post.data.pinned)
+  return nonPinnedPosts.slice(0, count)
+}
+
+export async function getPinnedPostsCount(): Promise<number> {
+  const pinnedPosts = await getPinnedPosts()
+  return pinnedPosts.length
+}
+
+export async function getAllPostsWithPinnedFirst(): Promise<CollectionEntry<'blog'>[]> {
+  const posts = await getCollection('blog')
+  return posts
+    .filter((post) => !post.data.draft)
+    .sort((a, b) => {
+      // First, sort by pinned status (pinned posts first)
+      if (a.data.pinned && !b.data.pinned) return -1
+      if (!a.data.pinned && b.data.pinned) return 1
+      // Then sort by date (newest first)
+      return b.data.date.valueOf() - a.data.date.valueOf()
+    })
 }

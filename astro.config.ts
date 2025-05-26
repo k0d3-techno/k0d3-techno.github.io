@@ -32,7 +32,6 @@ export default defineConfig({
         wrap: false,
         collapseStyle: 'collapsible-auto',
         overridesByLang: {
-        //   'ansi,bat,bash,batch,cmd,console,powershell,ps,ps1,psd1,psm1,sh,shell,shellscript,shellsession,text,zsh,py,asm,c,cpp':
         '*':
             {
               showLineNumbers: true,
