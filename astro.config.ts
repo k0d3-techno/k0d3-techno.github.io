@@ -1,5 +1,4 @@
 import { defineConfig } from 'astro/config'
-
 import mdx from '@astrojs/mdx'
 import react from '@astrojs/react'
 import sitemap from '@astrojs/sitemap'
@@ -22,6 +21,34 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   site: 'https://5o1z.github.io',
+  base: '/',
+  output: 'static',
+  build: {
+    assets: 'assets',
+    inlineStylesheets: 'auto',
+  },
+  vite: {
+    plugins: [tailwindcss()],
+    build: {
+      cssMinify: 'esbuild',
+      minify: 'esbuild',
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            react: ['react', 'react-dom'],
+            radix: ['@radix-ui/react-dropdown-menu', '@radix-ui/react-scroll-area'],
+            utils: ['class-variance-authority', 'clsx'],
+          },
+        },
+      },
+    },
+    ssr: {
+      noExternal: ['@radix-ui/*'],
+    },
+    optimizeDeps: {
+      include: ['react', 'react-dom'],
+    },
+  },
   integrations: [
     expressiveCode({
       themes: ['github-light-high-contrast', 'github-dark-high-contrast'],
@@ -65,14 +92,23 @@ export default defineConfig({
         uiFontFamily: 'var(--font-sans)',
       },
     }),
-    mdx(),
-    react(),
-    sitemap(),
-    icon(),
+    mdx({
+      optimize: true,
+    }),
+    react({
+      include: ['**/react/*', '**/ui/*'],
+    }),
+    sitemap({
+      changefreq: 'weekly',
+      priority: 0.7,
+      lastmod: new Date(),
+    }),
+    icon({
+      include: {
+        lucide: ['*'],
+      },
+    }),
   ],
-  vite: {
-    plugins: [tailwindcss()],
-  },
   server: {
     port: 1234,
     host: true,

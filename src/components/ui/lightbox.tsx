@@ -23,7 +23,6 @@ export const Lightbox = memo(function Lightbox({
     setMounted(true)
     return () => setMounted(false)
   }, [])
-
   useEffect(() => {
     if (!isOpen) return
 
@@ -42,17 +41,21 @@ export const Lightbox = memo(function Lightbox({
       }
     }
 
-    document.addEventListener('keydown', handleEscape)
-    document.addEventListener('mousedown', handleClickOutside)
-    document.body.style.overflow = 'hidden' // Prevent scrolling when lightbox is open
+    // Use requestAnimationFrame for smoother animations
+    requestAnimationFrame(() => {
+      document.addEventListener('keydown', handleEscape)
+      document.addEventListener('mousedown', handleClickOutside)
+      document.body.style.overflow = 'hidden'
+      document.body.classList.add('no-scroll')
+    })
 
     return () => {
       document.removeEventListener('keydown', handleEscape)
       document.removeEventListener('mousedown', handleClickOutside)
-      document.body.style.overflow = '' // Restore scrolling when lightbox closes
+      document.body.style.overflow = ''
+      document.body.classList.remove('no-scroll')
     }
   }, [isOpen])
-
   const handleImageClick = () => {
     setIsOpen(true)
   }

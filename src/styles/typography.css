@@ -4,6 +4,12 @@
   .prose {
     @apply text-foreground text-[16px] leading-8;
     @apply [&>*]:first:mt-0 [&>*]:last:mb-0 [&>section:first-child>*]:mt-0 [&>section:last-child>*]:mb-0;
+    font-feature-settings:
+      'liga' 1,
+      'kern' 1;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 
     p {
       @apply text-foreground/80 my-5 leading-7 not-first:mt-5;

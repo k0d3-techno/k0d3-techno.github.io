@@ -18,6 +18,14 @@ import Favicons from './Favicons.astro'
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+
+  <!-- Performance optimizations -->
+  <link rel="preload" href="/fonts/GeistVF.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/GeistMonoVF.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/static/logo.svg" as="image" />
+
+  <!-- Critical performance script -->
+  <script src="/scripts/performance.js" async is:inline></script>
   <meta
     name="format-detection"
     content="telephone=no,date=no,address=no,email=no,url=no"

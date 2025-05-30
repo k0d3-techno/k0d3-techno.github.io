@@ -38,14 +38,17 @@ const MobileMenu = () => {
         <Button
           variant="ghost"
           size="icon"
-          className="size-8 sm:hidden"
+          className="size-8 transition-all duration-200 ease-out hover:scale-105 active:scale-95 sm:hidden"
           title="Menu"
         >
           <Menu className="size-5" />
           <span className="sr-only">Toggle menu</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="bg-background">
+      <DropdownMenuContent
+        align="end"
+        className="bg-background animate-fadeIn border-border/50 backdrop-blur-sm"
+      >
         {NAV_LINKS.map((item) => (
           <DropdownMenuItem key={item.href} asChild>
             <a

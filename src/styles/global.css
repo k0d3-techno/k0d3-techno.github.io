@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import './performance.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -163,6 +164,8 @@
 
   html {
     @apply bg-background text-foreground text-[16px] scheme-light;
+    scroll-behavior: smooth;
+    scroll-padding-top: 80px;
 
     &.dark {
       @apply scheme-dark;
@@ -192,6 +195,30 @@
   }
   body {
     @apply bg-background text-foreground;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  *,
+  *::before,
+  *::after {
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+
+  button,
+  [role='button'] {
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  img,
+  video {
+    height: auto;
+    max-width: 100%;
+    image-rendering: optimizeQuality;
   }
 }
 
